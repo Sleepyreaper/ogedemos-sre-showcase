@@ -1,0 +1,62 @@
+name: Deploy approved fix → OGEDemos_RG
+
+# Fires when a triage PR is merged to main. Re-runs the affected
+# Bicep deployment(s) against OGEDemos_RG and closes the linked issue.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/scenarios/**'
+      - 'agents/**'
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (Workload Identity Federation)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Detect changed scenarios
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD^ HEAD | grep '^infra/scenarios/.*\.bicep$' || true)
+          echo "files=$CHANGED" >> $GITHUB_OUTPUT
+          echo "Changed scenarios:"
+          echo "$CHANGED"
+
+      - name: Redeploy changed scenarios
+        if: steps.changes.outputs.files != ''
+        run: |
+          for file in ${{ steps.changes.outputs.files }}; do
+            name="deploy-$(basename $file .bicep)-$(date +%s)"
+            echo "→ Deploying $file as $name"
+            az deployment group create \
+              -g OGEDemos_RG \
+              --name "$name" \
+              --template-file "$file" \
+              --query "properties.provisioningState" -o tsv
+          done
+
+      - name: Close linked issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Find issues referenced in the merged commit messages and close them
+          COMMITS=$(git log HEAD^..HEAD --pretty=%B)
+          for num in $(echo "$COMMITS" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
+            gh issue close "$num" --comment "Fix deployed to OGEDemos_RG by ${{ github.workflow }} run ${{ github.run_id }}." || true
+          done
