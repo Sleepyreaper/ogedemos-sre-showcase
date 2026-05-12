@@ -69,8 +69,9 @@
 # 1. Deploy the broken scenarios to OGEDemos_RG
 cd infra/scenarios && bash deploy-all.sh
 
-# 2. Provision Azure SRE Agent against OGEDemos_RG (after feature reg propagates)
-bash scripts/provision-sre-agent.sh
+# 2. Verify the SRE Agent (ogeagenticops) is healthy and see what
+#    still needs to be configured for the GitHub bridge
+bash scripts/check-sre-agent.sh
 
 # 3. Configure GitHub secrets for the triage agent (uses Workload Identity Federation)
 gh secret set AZURE_OPENAI_ENDPOINT --body "https://ogeagenticdemos-resource.cognitiveservices.azure.com/"
@@ -78,8 +79,12 @@ gh secret set AZURE_CLIENT_ID --body "<workload-identity-client-id>"
 gh secret set AZURE_TENANT_ID --body "<tenant>"
 gh secret set AZURE_SUBSCRIPTION_ID --body "<sub>"
 
-# 4. Open a synthetic incident issue to test the loop end-to-end
-bash scripts/simulate-sre-issue.sh "Orphaned disk drift detected"
+# 4. (Optional) Set up the AzMonitor → GitHub bridge if you're not
+#    wiring the SRE Agent's gitHubConfiguration directly in the portal
+bash scripts/setup-azmon-github-bridge.sh
+
+# 5. Open a synthetic incident issue to test the loop end-to-end
+bash scripts/simulate-sre-issue.sh "Orphaned disk drift detected" cost
 ```
 
 ## See also
@@ -97,6 +102,7 @@ bash scripts/simulate-sre-issue.sh "Orphaned disk drift detected"
 | Demo scenarios (Bicep) | ✅ scaffolded |
 | Triage agent | ✅ scaffolded |
 | GitHub workflows | ✅ scaffolded |
-| Azure SRE Agent provisioning | ⏳ pending feature registration propagation |
-| Workload Identity Federation | ⏳ pending (after first end-to-end) |
-| Deployed live demo scenarios | ⏳ pending user "go" |
+| Azure SRE Agent (`ogeagenticops`) | ✅ provisioned in `OGEDemos_RG`, model=Anthropic Automatic, mode=review, scope=OGEDemos_RG |
+| SRE Agent → GitHub bridge | ⏳ choose path A (configure in portal) or B (Logic App bridge — `scripts/setup-azmon-github-bridge.sh`) |
+| Workload Identity Federation | ⏳ runbook §3 |
+| Deployed live demo scenarios | ⏳ `bash infra/scenarios/deploy-all.sh` when ready |
