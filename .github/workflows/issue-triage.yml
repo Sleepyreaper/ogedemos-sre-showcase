@@ -8,6 +8,12 @@ on:
   issues:
     types: [opened, labeled]
 
+# Serialize per-issue: when the SRE Agent files an issue + adds 3 labels,
+# the workflow would otherwise fire 4× simultaneously and race on git push.
+concurrency:
+  group: triage-issue-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   issues: write
