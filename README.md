@@ -67,9 +67,8 @@
 | `infra/scenarios/` | 4 broken-on-purpose Bicep templates deployed to `OGEDemos_RG` |
 | `knowledge-base/` | Markdown runbooks loaded into the SRE Agent's memory |
 | `sre-config/agents/` | YAML specs (`azuresre.ai/v1`) for custom subagents |
-| `sre-config/connectors/` | YAML for the GitHub OAuth data connector |
-| `scripts/apply-sre-config.sh` | Uploads KB + creates subagents on `ogeagenticops` |
-| `scripts/setup-github.sh` | PAT-based GitHub connector setup (fallback for portal OAuth) |
+| `scripts/apply-sre-config.sh` | Uploads KB + creates subagents + registers CodeRepo on `ogeagenticops` |
+| `scripts/register-github-repo.sh` | Register an additional GitHub repo as a CodeRepo (modern pattern) |
 | `scripts/check-sre-agent.sh` | Read-only verifier of the agent's current state |
 | `scripts/simulate-sre-issue.sh` | Files a synthetic issue without waiting for the real agent |
 | `scripts/seed-expiring-cert.sh` | Injects the near-expiry cert into the Key Vault scenario |
@@ -89,12 +88,10 @@ bash scripts/apply-sre-config.sh
 # Attempts to create 5 subagents via management plane (may be tenant-gated;
 # see "Tenant gates" below).
 
-# 3. Wire GitHub to the SRE Agent — two options:
-#    A) Portal (recommended):  open ogeagenticops in https://sre.azure.com,
-#       Builder → Connectors → Add GitHub, OAuth into Sleepyreaper/ogedemos-sre-showcase
-#    B) PAT-based via data plane:
-#       export GITHUB_PAT=ghp_xxxxxxxxxxxx
-#       bash scripts/setup-github.sh
+# 3. Wire GitHub to the SRE Agent
+#    One-time: sign in to GitHub at https://sre.azure.com (Connectors → GitHub)
+#    Then register the repo:
+bash scripts/register-github-repo.sh Sleepyreaper/ogedemos-sre-showcase
 
 # 4. Fire a synthetic test (works without the agent)
 bash scripts/simulate-sre-issue.sh "Open SSH on mgmt subnet" security
@@ -140,7 +137,7 @@ Full per-scenario detail in [`docs/scenarios.md`](docs/scenarios.md).
 | Demo scenarios (Bicep) | ✅ deployed to OGEDemos_RG |
 | Knowledge base (7 runbooks) | ✅ uploaded + indexed on `ogeagenticops` |
 | Custom subagents (YAML) | ⚠️ specs ready in `sre-config/agents/`; apply via portal (tenant-gated) |
-| GitHub OAuth connector | ⏳ wire in portal (Builder → Connectors) |
+| GitHub repo registered as CodeRepo on agent | ✅ `ogedemos-sre-showcase` cloneStatus=Ready alongside 5 other repos |
 | Triage workflow (Foundry-direct alternative) | ✅ end-to-end verified (issue #1 → PR #2) |
 | Workload Identity Federation | ✅ |
 | DTE Cloud Weather Ops (sibling app) | ✅ live at dteops.ogedemos.com |

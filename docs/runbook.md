@@ -73,22 +73,22 @@ This uploads 7 markdown runbooks into the agent's knowledge base via the data pl
 
 ### 4. Wire GitHub to the SRE Agent
 
-**Path A — Portal (recommended)**
+**Path A — Portal (recommended for first-time setup)**
 
-1. Open https://sre.azure.com → select `ogeagenticops`
-2. Builder → Connectors → Add GitHub
-3. OAuth into `Sleepyreaper/ogedemos-sre-showcase`
-4. (Optional) Set default labels: `sre-finding`, `needs-triage`
+1. Open https://sre.azure.com → sign in
+2. Open agent `ogeagenticops`
+3. Connectors → ensure GitHub is signed in at the user level (one-time)
+4. Code Repos → "Add" → paste `https://github.com/Sleepyreaper/ogedemos-sre-showcase`
 
-**Path B — PAT via data plane (script)**
+**Path B — Register via data plane (idempotent CLI)**
 
 ```bash
-# Fine-grained PAT at https://github.com/settings/personal-access-tokens/new
-# Scope: Contents: Read, Issues: Read+Write, Metadata: Read
-# For Sleepyreaper/ogedemos-sre-showcase
-export GITHUB_PAT=ghp_xxxxxxxxxxxxxxxxxxxx
-bash scripts/setup-github.sh
+bash scripts/register-github-repo.sh Sleepyreaper/ogedemos-sre-showcase
 ```
+
+This works after you've completed the one-time portal GitHub sign-in. The repo clones onto the agent and the agent can search code + open issues automatically.
+
+> **Note:** The legacy `GitHubOAuth` *connector* type is deprecated — modern SRE Agent doesn't use per-connector tokens. User-level OAuth (signed in at the portal) covers all repos you register.
 
 ### 5. Configure Workload Identity Federation (for the Foundry-direct workflow)
 
