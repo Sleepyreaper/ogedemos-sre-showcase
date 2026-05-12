@@ -73,10 +73,11 @@ jobs:
           PATCH_FILE=$(jq -r '.fix.filename // empty' out/proposal.json)
           if [ -n "$PATCH_FILE" ]; then
             mkdir -p "$(dirname "$PATCH_FILE")"
-            cp out/$(basename "$PATCH_FILE") "$PATCH_FILE" 2>/dev/null || true
+            cp "out/$(basename "$PATCH_FILE")" "$PATCH_FILE" 2>/dev/null || true
             git add "$PATCH_FILE" || true
           fi
-          git add out/proposal.json
+          # out/ is gitignored; force-add the audit artifact
+          git add -f out/proposal.json
           git commit -m "Triage agent proposal for #${{ github.event.issue.number }}" || echo "Nothing to commit"
 
           git push -u origin "$BRANCH"
@@ -87,12 +88,17 @@ jobs:
             --body-file out/pr-body.md \
             --base main \
             --head "$BRANCH" \
-            --label "agent-proposal,needs-human-review"
+            --label "agent-proposal,needs-human-review" || {
+              echo "PR may already exist for this branch; updating..."
+              gh pr edit "$BRANCH" --body-file out/pr-body.md || true
+            }
 
       - name: Link PR back to issue
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PR_URL=$(gh pr list --head "triage/issue-${{ github.event.issue.number }}" --json url --jq '.[0].url')
-          gh issue comment ${{ github.event.issue.number }} \
-            --body "🤖 Triage agent has proposed a fix in $PR_URL — please review and approve/reject."
+          PR_URL=$(gh pr list --head "triage/issue-${{ github.event.issue.number }}" --json url --jq '.[0].url' || echo "")
+          if [ -n "$PR_URL" ]; then
+            gh issue comment ${{ github.event.issue.number }} \
+              --body "🤖 Triage agent has proposed a fix in $PR_URL — please review and approve/reject."
+          fi
