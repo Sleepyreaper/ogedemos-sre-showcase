@@ -69,7 +69,12 @@ Expected output: agent is `Running` (or `BuildingKnowledgeGraph` on first deploy
 bash scripts/apply-sre-config.sh
 ```
 
-This uploads 7 markdown runbooks into the agent's knowledge base via the data plane. It also attempts to create 5 custom subagents via the management plane — this currently requires the `Agent Extensions` tenant feature flag (Microsoft preview). If your tenant doesn't have it, the script reports "skipped (tenant gate)" and you should apply the YAML specs in `sre-config/agents/` via the portal manually.
+This:
+1. **Uploads 7 markdown runbooks** into the agent's knowledge base via the data plane — all indexed.
+2. **Attempts to create 5 custom subagents** via management plane — this currently requires the `Agent Extensions` tenant feature flag (Microsoft preview). If your tenant doesn't have it, apply the YAML specs via the portal — see [`applying-subagents-via-portal.md`](./applying-subagents-via-portal.md).
+3. **Registers `ogedemos-sre-showcase`** as a CodeRepo on the agent so subagents can search Bicep / scenarios / docs.
+
+> The script also handles cleaning up any legacy `GitHubOAuth` data connector left over from earlier scaffolding — the modern pattern doesn't use a separate connector.
 
 ### 4. Wire GitHub to the SRE Agent
 
@@ -90,7 +95,46 @@ This works after you've completed the one-time portal GitHub sign-in. The repo c
 
 > **Note:** The legacy `GitHubOAuth` *connector* type is deprecated — modern SRE Agent doesn't use per-connector tokens. User-level OAuth (signed in at the portal) covers all repos you register.
 
-### 5. Configure Workload Identity Federation (for the Foundry-direct workflow)
+### 5. Wire DTE Cloud Weather Ops telemetry into the agent (optional but recommended)
+
+Lets the SRE Agent correlate DTE app failures with infrastructure events. The agent's UAMI needs read on `DTE_RG`:
+
+```bash
+SUB=$(az account show --query id -o tsv)
+UAMI_PRINCIPAL="eaf1883b-b217-4d3d-805f-3da4e1b03159"   # ogeagenticops-etpaql446bpno principalId
+DTE_RG_ID="/subscriptions/$SUB/resourceGroups/DTE_RG"
+
+for ROLE in "Reader" "Monitoring Reader" "Log Analytics Reader"; do
+  az role assignment create --assignee-object-id "$UAMI_PRINCIPAL" \
+    --assignee-principal-type ServicePrincipal \
+    --role "$ROLE" --scope "$DTE_RG_ID"
+done
+
+# Add connectors on ogeagenticops
+AGENT_ID="/subscriptions/$SUB/resourceGroups/OGEDemos_RG/providers/Microsoft.App/agents/ogeagenticops"
+DTE_APPI="/subscriptions/$SUB/resourceGroups/DTE_RG/providers/microsoft.insights/components/dteops-appi"
+DTE_LAW="/subscriptions/$SUB/resourceGroups/DTE_RG/providers/Microsoft.OperationalInsights/workspaces/dteops-log"
+
+az rest --method PUT \
+  --url "https://management.azure.com${AGENT_ID}/DataConnectors/dteops-appi?api-version=2025-05-01-preview" \
+  --body "{\"properties\":{\"dataConnectorType\":\"AppInsights\",\"dataSource\":\"${DTE_APPI}\"}}"
+
+az rest --method PUT \
+  --url "https://management.azure.com${AGENT_ID}/DataConnectors/dteops-log?api-version=2025-05-01-preview" \
+  --body "{\"properties\":{\"dataConnectorType\":\"LogAnalytics\",\"dataSource\":\"${DTE_LAW}\"}}"
+```
+
+Verify via `bash scripts/check-sre-agent.sh` or:
+
+```bash
+curl -sS "https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai/api/v2/extendedAgent/connectors/dteops-log/status" \
+  -H "Authorization: Bearer $(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)"
+# Expected: "status":"Connected", "healthy":true, "message":"Connected via managed identity."
+```
+
+> The agent will detect that `AzureActivity` table on `dteops-log` is empty unless the subscription-scope Activity Log diagnostic setting is configured. See `../DTECloudWeatherOperations/docs/telemetry-guide.md` §3.2 for the one-time fix.
+
+### 6. Configure Workload Identity Federation (for the Foundry-direct workflow)
 
 WIF lets `.github/workflows/issue-triage.yml` and `deploy.yml` authenticate to Azure with no stored secrets.
 

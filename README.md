@@ -42,7 +42,15 @@
    │      │   • code-analyzer        (Review mode)             │          │
    │      │   • issue-triager        (Autonomous)              │          │
    │      │                                                    │          │
-   │      │  GitHub OAuth Connector → this repo                │          │
+   │      │  Data Connectors:                                  │          │
+   │      │   • OGEAgentAppInsight  (agent's own telemetry)    │          │
+   │      │   • dteops-appi          (DTE Cloud Weather Ops)   │          │
+   │      │   • dteops-log           (DTE Log Analytics)       │          │
+   │      │                                                    │          │
+   │      │  CodeRepos (cloned + indexed):                     │          │
+   │      │   • ogedemos-sre-showcase    DTECloudWeatherOps    │          │
+   │      │   • OGEAgenticITOperations   P66-Ops-Council       │          │
+   │      │   • PPLAUTO                  ZeroDownTimeDevOps    │          │
    │      └────────────────────────┬───────────────────────────┘          │
    └────────────────────────────────┼─────────────────────────────────────┘
                                     │ files
@@ -136,8 +144,10 @@ Full per-scenario detail in [`docs/scenarios.md`](docs/scenarios.md).
 | GitHub repo | ✅ |
 | Demo scenarios (Bicep) | ✅ deployed to OGEDemos_RG |
 | Knowledge base (7 runbooks) | ✅ uploaded + indexed on `ogeagenticops` |
-| Custom subagents (YAML) | ⚠️ specs ready in `sre-config/agents/`; apply via portal (tenant-gated) |
+| Custom subagents (YAML) | ⚠️ specs ready in `sre-config/agents/`; apply via portal (tenant-gated for API) |
 | GitHub repo registered as CodeRepo on agent | ✅ `ogedemos-sre-showcase` cloneStatus=Ready alongside 5 other repos |
+| DTE Cloud Weather Ops connectors (LAW + App Insights) | ✅ `dteops-log` + `dteops-appi` wired to `ogeagenticops`, query-verified live |
+| End-to-end SRE Agent investigation → GitHub issue | ✅ Issue [#3](https://github.com/Sleepyreaper/ogedemos-sre-showcase/issues/3) filed autonomously by the agent (read runbook, investigated, grep'd repo, classified drift, proposed Bicep fix) |
 | Triage workflow (Foundry-direct alternative) | ✅ end-to-end verified (issue #1 → PR #2) |
 | Workload Identity Federation | ✅ |
 | DTE Cloud Weather Ops (sibling app) | ✅ live at dteops.ogedemos.com |
