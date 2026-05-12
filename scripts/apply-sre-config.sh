@@ -17,6 +17,7 @@
 #   bash scripts/apply-sre-config.sh --kb-only         # only upload knowledge base
 #   bash scripts/apply-sre-config.sh --agents-only     # only create subagents
 #   bash scripts/apply-sre-config.sh --connector-only  # only set up GitHub connector
+#   bash scripts/apply-sre-config.sh --with-dte        # also wire DTE LAW+AppInsights connectors
 # =============================================================================
 set -uo pipefail
 
@@ -212,6 +213,42 @@ try:
     p = r['properties']
     print(f\"    • {r['name']:35s} {p.get('cloneStatus','?')}\")
 except: pass"
+fi
+
+# ── Step 4: DTE Cloud Weather Ops connectors (optional) ────────────────────
+# Wires dteops-log (Log Analytics) + dteops-appi (App Insights) so subagents
+# can correlate DTE app failures with infrastructure events. Skipped unless
+# explicitly enabled via --with-dte.
+if echo "$@" | grep -q -- --with-dte; then
+  echo
+  echo "─── Step 4: DTE telemetry connectors ──────────────────────"
+  SUB=$(az account show --query id -o tsv)
+  DTE_APPI="/subscriptions/${SUB}/resourceGroups/DTE_RG/providers/microsoft.insights/components/dteops-appi"
+  DTE_LAW="/subscriptions/${SUB}/resourceGroups/DTE_RG/providers/Microsoft.OperationalInsights/workspaces/dteops-log"
+
+  # Grant UAMI roles on DTE_RG (idempotent — Azure returns 200 if assignment exists)
+  UAMI_PRINCIPAL=$(az resource show --resource-type "Microsoft.App/agents" --name "$AGENT_NAME" -g "$RG" \
+    --api-version "$API_VERSION" --query "properties.knowledgeGraphConfiguration.identity" -o tsv | \
+    xargs -I {} az resource show --ids {} --query "properties.principalId" -o tsv)
+  DTE_RG_ID="/subscriptions/${SUB}/resourceGroups/DTE_RG"
+  for ROLE in "Reader" "Monitoring Reader" "Log Analytics Reader"; do
+    echo -n "  ↳ Grant '$ROLE' on DTE_RG ... "
+    az role assignment create --assignee-object-id "$UAMI_PRINCIPAL" \
+      --assignee-principal-type ServicePrincipal \
+      --role "$ROLE" --scope "$DTE_RG_ID" --output none 2>/dev/null && echo "ok" || echo "(already exists or failed)"
+  done
+
+  echo -n "  ↳ Create dteops-appi connector ... "
+  az rest --method PUT \
+    --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors/dteops-appi?api-version=${API_VERSION}" \
+    --body "{\"properties\":{\"dataConnectorType\":\"AppInsights\",\"dataSource\":\"${DTE_APPI}\"}}" \
+    --output none 2>/dev/null && echo "ok" || echo "FAILED"
+
+  echo -n "  ↳ Create dteops-log connector ... "
+  az rest --method PUT \
+    --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors/dteops-log?api-version=${API_VERSION}" \
+    --body "{\"properties\":{\"dataConnectorType\":\"LogAnalytics\",\"dataSource\":\"${DTE_LAW}\"}}" \
+    --output none 2>/dev/null && echo "ok" || echo "FAILED"
 fi
 
 echo
