@@ -43,13 +43,46 @@ You should end up with these resources in `OGEDemos_RG`:
 | Cost | Managed disk + App Plan | `ogedemo-cost-orphan-disk`, `ogedemo-cost-idle-plan` |
 | Reliability | Key Vault + cert | `ogedemo-reli-kv-*`, `near-expiry-cert` |
 
-### 2. Provision the SRE Agent
+### 2. Verify the SRE Agent
+
+The Azure SRE Agent `ogeagenticops` is already provisioned in `OGEDemos_RG`. Confirm it's running and see what (if anything) still needs to be configured:
 
 ```bash
-bash scripts/provision-sre-agent.sh
+bash scripts/check-sre-agent.sh
 ```
 
-If feature flags are still propagating, this will retry every 30s. The script will fall back to printing portal instructions if the preview resource type isn't yet exposed via ARM.
+Current configuration (as of 2026-05-12):
+- **Resource:** `Microsoft.App/agents/ogeagenticops`
+- **Endpoint:** `https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai`
+- **Model:** Anthropic Automatic (managed model selection)
+- **Scope:** Knowledge graph covers `OGEDemos_RG`
+- **Action mode:** `review` with `Low` access — agent proposes, never executes
+- **Identity:** System-assigned + user-assigned (`ogeagenticops-etpaql446bpno`)
+- **UAMI roles on `OGEDemos_RG`:** Reader, Monitoring Reader, Monitoring Contributor, Log Analytics Reader
+- **Incident management:** Azure Monitor (`incidentManagementConfiguration.type = AzMonitor`)
+- **GitHub integration:** ⚠️ not yet configured — see "Bridge to GitHub" below
+
+### 2a. Bridge SRE findings → GitHub Issues
+
+Findings from the SRE Agent need to land as GitHub Issues on this repo to trigger the triage workflow. Two supported paths:
+
+**Path A — Configure GitHub in the SRE Agent portal (recommended)**
+1. Open the agent in the [Azure portal](https://portal.azure.com/) → search "SRE Agents" → `ogeagenticops`
+2. Go to **Integrations → GitHub**
+3. Install the SRE Agent GitHub App on `Sleepyreaper/ogedemos-sre-showcase`
+4. Configure labels `sre-finding, needs-triage` on filed issues
+
+**Path B — Azure Monitor Action Group + Logic App bridge (fallback)**
+```bash
+bash scripts/setup-azmon-github-bridge.sh
+```
+This deploys a Logic App that POSTs to `https://api.github.com/repos/Sleepyreaper/ogedemos-sre-showcase/issues` whenever an SRE finding becomes an Azure Monitor incident. Slightly less direct than Path A but works without portal access to the GitHub App.
+
+**Path C — Manual simulation (already works)**
+```bash
+bash scripts/simulate-sre-issue.sh "Open SSH on mgmt subnet" security
+```
+Files a synthetic issue identical in shape to a real SRE Agent finding. Useful for testing the triage workflow without producing real Azure incidents.
 
 ### 3. Configure GitHub → Azure auth (Workload Identity Federation)
 
@@ -153,7 +186,7 @@ Reasoning models occasionally produce prose despite `response_format`. Check the
 
 ### SRE Agent provisioning fails with "feature not registered"
 
-Run `az feature show --namespace Microsoft.App --name SREAgentPreview --query properties.state`. If it's still `Registering`, wait. Microsoft preview features can take 15-30 minutes to fully propagate.
+If you're creating the SRE Agent from scratch via CLI, run `az feature show --namespace Microsoft.App --name SREAgentPreview --query properties.state`. If it's still `Registering`, wait — Microsoft preview features can take 15-30 minutes to propagate. In our case the agent (`ogeagenticops`) was created via the portal, which handles the feature reg implicitly.
 
 ### PR opens but the patch file is empty
 
