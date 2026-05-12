@@ -162,51 +162,56 @@ print(json.dumps(data['spec']))
   fi
 fi
 
-# ── Step 3: GitHub OAuth Connector ──────────────────────────────────────────
+# ── Step 3: GitHub CodeRepo Registration (modern pattern) ───────────────────
+# The legacy 'GitHubOAuth' connector type was deprecated. The modern pattern
+# is to register a CodeRepo directly via PUT /api/v2/repos/{name} — the user's
+# portal-level GitHub OAuth covers it without a per-connector auth.
 if [ -z "$KB_ONLY" ] && [ -z "$AGENTS_ONLY" ]; then
   echo
-  echo "─── Step 3: GitHub OAuth Connector ────────────────────────"
-  # Use whichever token works for both planes (data + ARM are separate audiences).
+  echo "─── Step 3: Register repo as a CodeRepo ────────────────────"
   DATA_TOKEN="${DATA_TOKEN:-$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)}"
 
-  # Check if connector already exists
-  EXISTING=$(az rest --method GET \
-    --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors?api-version=${API_VERSION}" \
-    --query "value[?name=='github'].name" -o tsv 2>/dev/null)
-
-  if [ -n "$EXISTING" ]; then
-    echo "  ✓ GitHub connector already exists on this agent."
-  else
-    echo -n "  ↳ Creating GitHub connector (data plane) ... "
-    RESP=$(curl -sS -X PUT "${AGENT_ENDPOINT}/api/v2/extendedAgent/connectors/github" \
-      -H "Authorization: Bearer ${DATA_TOKEN}" \
-      -H "Content-Type: application/json" \
-      -d '{"name":"github","type":"AgentConnector","properties":{"dataConnectorType":"GitHubOAuth","dataSource":"github-oauth"}}' \
-      -w "\nHTTP_CODE=%{http_code}")
-    if echo "$RESP" | grep -q "HTTP_CODE=200"; then echo "ok"; else echo "FAILED"; echo "$RESP" | head -3; fi
-
-    echo -n "  ↳ Creating GitHub connector (ARM)        ... "
-    RESP=$(az rest --method PUT \
+  # Clean up any deprecated GitHubOAuth connector left over from previous runs
+  if az rest --method GET \
+       --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors/github?api-version=${API_VERSION}" \
+       --query "properties.dataConnectorType" -o tsv 2>/dev/null | grep -q "GitHubOAuth"; then
+    echo "  ↳ Removing deprecated GitHubOAuth connector ..."
+    az rest --method DELETE \
       --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors/github?api-version=${API_VERSION}" \
-      --body '{"properties":{"dataConnectorType":"GitHubOAuth","dataSource":"github-oauth"}}' 2>&1)
-    if echo "$RESP" | grep -q "\"provisioningState\": \"Succeeded\""; then echo "ok"; else echo "FAILED"; echo "$RESP" | head -3; fi
+      --output none 2>/dev/null || true
   fi
 
-  echo "  ↳ Fetching OAuth authorization URL ..."
-  OAUTH_RESP=$(curl -sS "${AGENT_ENDPOINT}/api/v1/github/config" -H "Authorization: Bearer ${DATA_TOKEN}")
-  OAUTH_URL=$(echo "$OAUTH_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('oAuthUrl','') or d.get('OAuthUrl',''))" 2>/dev/null)
-  if [ -n "$OAUTH_URL" ]; then
-    echo
-    echo "  ═══════════════════════════════════════════════════════════════"
-    echo "    ACTION REQUIRED — open this URL once to authorize GitHub:"
-    echo "  ═══════════════════════════════════════════════════════════════"
-    echo
-    echo "    $OAUTH_URL"
-    echo
-    echo "  After authorizing, the connector is fully usable."
+  # Register the repo as a CodeRepo
+  GITHUB_REPO="${GITHUB_REPO:-Sleepyreaper/ogedemos-sre-showcase}"
+  REPO_NAME=$(echo "$GITHUB_REPO" | cut -d'/' -f2)
+  echo -n "  ↳ Registering $GITHUB_REPO as CodeRepo ... "
+  RESP=$(curl -sS -X PUT "${AGENT_ENDPOINT}/api/v2/repos/${REPO_NAME}" \
+    -H "Authorization: Bearer ${DATA_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"${REPO_NAME}\",\"type\":\"CodeRepo\",\"properties\":{\"url\":\"https://github.com/${GITHUB_REPO}\",\"type\":\"GitHub\"}}" \
+    -w "\nHTTP_CODE=%{http_code}")
+  if echo "$RESP" | grep -q "HTTP_CODE=200"; then
+    echo "ok"
   else
-    echo "  (Could not retrieve OAuth URL automatically. Check the agent in the portal.)"
+    echo "FAILED"
+    echo "$RESP" | head -3
+    echo
+    echo "  If you get a 401/403, finish the user-level GitHub OAuth in the portal first:"
+    echo "    https://sre.azure.com  →  ogeagenticops  →  Connectors  →  GitHub"
   fi
+
+  echo
+  echo "  Waiting 15s for clone to complete..."
+  sleep 15
+  echo "  Repos on agent:"
+  curl -sS "${AGENT_ENDPOINT}/api/v2/repos" -H "Authorization: Bearer ${DATA_TOKEN}" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+  for r in d.get('value', []):
+    p = r['properties']
+    print(f\"    • {r['name']:35s} {p.get('cloneStatus','?')}\")
+except: pass"
 fi
 
 echo
