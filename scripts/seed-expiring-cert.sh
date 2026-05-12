@@ -4,7 +4,7 @@
 set -euo pipefail
 
 RG="${1:-OGEDemos_RG}"
-KV_NAME="$(az keyvault list -g "$RG" --query "[?contains(name, 'reli-kv')] | [0].name" -o tsv)"
+KV_NAME="$(az keyvault list -g "$RG" --query "[?starts_with(name, 'ogekv')] | [0].name" -o tsv)"
 
 if [ -z "$KV_NAME" ]; then
   echo "✗ Could not find reliability scenario Key Vault. Run scenario 4 deploy first."
