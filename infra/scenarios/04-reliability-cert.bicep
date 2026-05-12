@@ -16,7 +16,7 @@ param scenarioTag string = 'reliability-cert-expiry'
 param adminPrincipalId string = ''
 
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: '${prefix}-reli-kv-${uniqueString(resourceGroup().id)}'
+  name: 'ogekv${uniqueString(resourceGroup().id)}'
   location: location
   tags: {
     scenario: scenarioTag
