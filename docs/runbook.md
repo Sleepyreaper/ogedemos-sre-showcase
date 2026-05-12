@@ -1,27 +1,39 @@
-# Operational Runbook — OGEDemos SRE Showcase
+# Operational Runbook — OGEDemos SRE + Triage Showcase
 
-This runbook walks an operator through the full end-to-end loop and what to do when something goes sideways.
+This runbook walks operators through both patterns demonstrated in this repo: **SRE-Agent-native** (the Microsoft pattern, primary) and **Foundry-direct** (custom Python triage agent, secondary).
 
 ---
 
-## End-to-end happy path
+## End-to-end happy path — SRE-Agent-native
 
 ```
-1. Azure SRE Agent watches OGEDemos_RG
-2. SRE Agent detects: open NSG / orphan disk / no autoscale / near-expiry cert
-3. SRE Agent files a GitHub Issue on this repo with label "sre-finding"
-4. Workflow .github/workflows/issue-triage.yml fires
-5. Workflow downloads the issue + queries ARG for the affected resource
-6. Foundry triage agent (o4-mini) produces a structured fix proposal
-7. Workflow opens a DRAFT PR with the proposal + patch file
-8. CODEOWNERS reviewer receives a request
-9. Reviewer approves + merges
-10. .github/workflows/deploy.yml fires on the merge
-11. Bicep redeployment lands in OGEDemos_RG, closing the loop
-12. Workflow closes the linked issue
+1. Azure SRE Agent (ogeagenticops) builds knowledge graph on OGEDemos_RG
+2. Azure Monitor alert OR user chat invocation OR Response Plan match
+3. Agent invokes the matching custom subagent (e.g., security-fixer)
+4. Subagent searches knowledge base, follows the runbook, gathers evidence
+5. Subagent files GitHub issue using incident-report-template
+6. issue-triager (Autonomous) labels and comments on the issue
+7. Human reviews issue + agent's proposed fix
+8. Reviewer accepts → drafts PR with the fix
+9. CODEOWNERS approve + merge
+10. .github/workflows/deploy.yml redeploys to OGEDemos_RG
+11. Workflow closes the linked issue
 ```
 
-Every step is observable in GitHub (Actions tab + PR timeline) and in Azure (App Insights traces of the triage agent + ARM deployments in OGEDemos_RG).
+## End-to-end happy path — Foundry-direct
+
+```
+1. Human (or SRE Agent / external system) files issue on this repo
+2. .github/workflows/issue-triage.yml fires
+3. Custom Foundry agent in agents/triage/ runs with o4-mini
+4. Agent fetches Azure state via Resource Graph
+5. Agent produces structured JSON fix proposal
+6. Workflow opens draft PR with proposal.json + patch file
+7. Human reviews + approves + merges
+8. .github/workflows/deploy.yml redeploys
+```
+
+Both write to the same repo and respect the same human-approval gate. The DTE Cloud Weather Ops at https://dteops.ogedemos.com runs on the **Foundry-direct** pattern and demonstrates the 6-agent debate experience.
 
 ---
 
@@ -31,185 +43,214 @@ Every step is observable in GitHub (Actions tab + PR timeline) and in Azure (App
 
 ```bash
 cd infra/scenarios && bash deploy-all.sh
-bash ../../scripts/seed-expiring-cert.sh    # seeds the near-expiry cert
+bash ../../scripts/seed-expiring-cert.sh    # injects the near-expiry cert
 ```
 
 You should end up with these resources in `OGEDemos_RG`:
 
 | Scenario | Resource type | Name |
 |---|---|---|
-| Storm / reliability | VMSS | `ogedemo-storm-vmss` |
+| Storm / reliability | VMSS + VNet | `ogedemo-storm-vmss`, `ogedemo-storm-vnet` |
 | Security | NSG (open SSH+RDP) | `ogedemo-security-nsg` |
-| Cost | Managed disk + App Plan | `ogedemo-cost-orphan-disk`, `ogedemo-cost-idle-plan` |
-| Reliability | Key Vault + cert | `ogedemo-reli-kv-*`, `near-expiry-cert` |
+| Cost | Managed disk + Public IP | `ogedemo-cost-orphan-disk`, `ogedemo-cost-orphan-pip` |
+| Reliability | Key Vault + cert | `ogekv...`, `near-expiry-cert` |
 
-### 2. Verify the SRE Agent
-
-The Azure SRE Agent `ogeagenticops` is already provisioned in `OGEDemos_RG`. Confirm it's running and see what (if anything) still needs to be configured:
+### 2. Verify the SRE Agent (`ogeagenticops`)
 
 ```bash
 bash scripts/check-sre-agent.sh
 ```
 
-Current configuration (as of 2026-05-12):
-- **Resource:** `Microsoft.App/agents/ogeagenticops`
-- **Endpoint:** `https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai`
-- **Model:** Anthropic Automatic (managed model selection)
-- **Scope:** Knowledge graph covers `OGEDemos_RG`
-- **Action mode:** `review` with `Low` access — agent proposes, never executes
-- **Identity:** System-assigned + user-assigned (`ogeagenticops-etpaql446bpno`)
-- **UAMI roles on `OGEDemos_RG`:** Reader, Monitoring Reader, Monitoring Contributor, Log Analytics Reader
-- **Incident management:** Azure Monitor (`incidentManagementConfiguration.type = AzMonitor`)
-- **GitHub integration:** ⚠️ not yet configured — see "Bridge to GitHub" below
+Expected output: agent is `Running` (or `BuildingKnowledgeGraph` on first deploy), scoped to `OGEDemos_RG`, in `review` mode with `Low` access.
 
-### 2a. Bridge SRE findings → GitHub Issues
+### 3. Apply this repo's config to the agent
 
-Findings from the SRE Agent need to land as GitHub Issues on this repo to trigger the triage workflow. Two supported paths:
-
-**Path A — Configure GitHub in the SRE Agent portal (recommended)**
-1. Open the agent in the [Azure portal](https://portal.azure.com/) → search "SRE Agents" → `ogeagenticops`
-2. Go to **Integrations → GitHub**
-3. Install the SRE Agent GitHub App on `Sleepyreaper/ogedemos-sre-showcase`
-4. Configure labels `sre-finding, needs-triage` on filed issues
-
-**Path B — Azure Monitor Action Group + Logic App bridge (fallback)**
 ```bash
-bash scripts/setup-azmon-github-bridge.sh
+bash scripts/apply-sre-config.sh
 ```
-This deploys a Logic App that POSTs to `https://api.github.com/repos/Sleepyreaper/ogedemos-sre-showcase/issues` whenever an SRE finding becomes an Azure Monitor incident. Slightly less direct than Path A but works without portal access to the GitHub App.
 
-**Path C — Manual simulation (already works)**
+This uploads 7 markdown runbooks into the agent's knowledge base via the data plane. It also attempts to create 5 custom subagents via the management plane — this currently requires the `Agent Extensions` tenant feature flag (Microsoft preview). If your tenant doesn't have it, the script reports "skipped (tenant gate)" and you should apply the YAML specs in `sre-config/agents/` via the portal manually.
+
+### 4. Wire GitHub to the SRE Agent
+
+**Path A — Portal (recommended)**
+
+1. Open https://sre.azure.com → select `ogeagenticops`
+2. Builder → Connectors → Add GitHub
+3. OAuth into `Sleepyreaper/ogedemos-sre-showcase`
+4. (Optional) Set default labels: `sre-finding`, `needs-triage`
+
+**Path B — PAT via data plane (script)**
+
 ```bash
-bash scripts/simulate-sre-issue.sh "Open SSH on mgmt subnet" security
+# Fine-grained PAT at https://github.com/settings/personal-access-tokens/new
+# Scope: Contents: Read, Issues: Read+Write, Metadata: Read
+# For Sleepyreaper/ogedemos-sre-showcase
+export GITHUB_PAT=ghp_xxxxxxxxxxxxxxxxxxxx
+bash scripts/setup-github.sh
 ```
-Files a synthetic issue identical in shape to a real SRE Agent finding. Useful for testing the triage workflow without producing real Azure incidents.
 
-### 3. Configure GitHub → Azure auth (Workload Identity Federation)
+### 5. Configure Workload Identity Federation (for the Foundry-direct workflow)
 
-Workload Identity Federation lets GitHub Actions get short-lived Azure AD tokens without storing secrets. One-time setup:
+WIF lets `.github/workflows/issue-triage.yml` and `deploy.yml` authenticate to Azure with no stored secrets.
 
 ```bash
 SUB=$(az account show --query id -o tsv)
 TENANT=$(az account show --query tenantId -o tsv)
-APP_NAME="ogedemos-sre-showcase-github"
-
-# Create an App Registration
-APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
+APP_ID=$(az ad app create --display-name "ogedemos-sre-showcase-github" --query appId -o tsv)
 SP_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
 
-# Federate against GitHub OIDC (this repo + main branch)
-az ad app federated-credential create --id "$APP_ID" --parameters '{
-  "name": "github-main",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:Sleepyreaper/ogedemos-sre-showcase:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
+# Federated credential for main branch + PR builds + triage branches
+for SUBJECT in \
+  "repo:Sleepyreaper/ogedemos-sre-showcase:ref:refs/heads/main" \
+  "repo:Sleepyreaper/ogedemos-sre-showcase:pull_request" \
+  "repo:Sleepyreaper/ogedemos-sre-showcase:ref:refs/heads/triage/*"; do
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"$(echo $SUBJECT | tr ':/' '--' | tr '*' 'x' | head -c 64)\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"$SUBJECT\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }"
+done
 
-# Grant Contributor on OGEDemos_RG (scope down later for production)
+# RBAC
 RG_ID=$(az group show -n OGEDemos_RG --query id -o tsv)
-az role assignment create --assignee-object-id "$SP_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Contributor" --scope "$RG_ID"
-
-# Grant Cognitive Services OpenAI User on the Foundry account
 AOAI_ID=$(az cognitiveservices account show -g OGEDemos_RG -n ogeagenticdemos-resource --query id -o tsv)
-az role assignment create --assignee-object-id "$SP_ID" \
-  --assignee-principal-type ServicePrincipal \
+az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
+  --role "Contributor" --scope "$RG_ID"
+az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
   --role "Cognitive Services OpenAI User" --scope "$AOAI_ID"
+az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
+  --role "Reader" --scope "/subscriptions/$SUB"
 
-# Push the IDs into GitHub secrets
+# GitHub secrets
+APPI=$(az monitor app-insights component show -g DTE_RG -a dteops-appi --query connectionString -o tsv)
 gh secret set AZURE_CLIENT_ID --body "$APP_ID"
 gh secret set AZURE_TENANT_ID --body "$TENANT"
 gh secret set AZURE_SUBSCRIPTION_ID --body "$SUB"
 gh secret set AZURE_OPENAI_ENDPOINT --body "https://ogeagenticdemos-resource.cognitiveservices.azure.com/"
-
-# App Insights connection string for tracing the triage agent (optional)
-APPI=$(az monitor app-insights component show -g DTE_RG -a dteops-appi --query connectionString -o tsv)
 gh secret set APPLICATIONINSIGHTS_CONNECTION_STRING --body "$APPI"
-```
 
-### 4. Set CODEOWNERS
-
-Edit `.github/CODEOWNERS` so triage PRs get assigned to the right humans:
-
-```
-* @Sleepyreaper
+# Allow Actions to create PRs (one-time repo setting)
+gh api -X PUT /repos/Sleepyreaper/ogedemos-sre-showcase/actions/permissions/workflow \
+  -f default_workflow_permissions=write -F can_approve_pull_request_reviews=false
 ```
 
 ---
 
-## Demo flow
+## Demo flows
 
-The shortest path to a believable demo:
+### Flow A — SRE-Agent-native (after subagent feature GAs to your tenant)
+
+Once `Agent Extensions` is enabled and subagents are deployed:
+
+```
+1. Open https://sre.azure.com → ogeagenticops → chat
+2. Type: /agent security-fixer
+3. Ask: "Investigate ogedemo-security-nsg"
+4. Watch the agent:
+   • Search memory for security-drift-runbook
+   • Run az network nsg rule list
+   • Pull Activity Log for who/when
+   • File a GitHub issue with proposed Bicep patch
+5. Review the issue → draft PR → merge → deploy.yml redeploys
+```
+
+### Flow B — SRE-Agent-native without subagents (KB-only)
+
+Even without the `Agent Extensions` feature, the main SRE Agent uses the uploaded knowledge base. Just chat with the agent normally:
+
+```
+"Are there any security risks in OGEDemos_RG?"
+```
+
+The agent will SearchMemory for `security-drift-runbook` automatically and follow it.
+
+### Flow C — Foundry-direct (always works)
 
 ```bash
-# 1. (Pre-stage) verify scenarios are deployed and the agent is in place
-az resource list -g OGEDemos_RG --query "[].name" -o tsv
-
-# 2. File a synthetic SRE finding to kick off the triage loop
+# 1. File a synthetic SRE finding
 bash scripts/simulate-sre-issue.sh "Security drift — open SSH" security
 
-# 3. Watch the workflow run
+# 2. Watch the workflow
 gh run watch
 
-# 4. Open the resulting draft PR
+# 3. Open the draft PR
 gh pr list --label agent-proposal
 
-# 5. Approve + merge in the GitHub UI
+# 4. Approve + merge in the GitHub UI
 
-# 6. Watch deploy.yml redeploy the scenario with the fix
+# 5. Watch deploy.yml redeploy
 gh run watch
 
-# 7. Verify the fix landed
+# 6. Verify the fix
 az network nsg show -g OGEDemos_RG -n ogedemo-security-nsg \
   --query "securityRules[].{name:name, src:sourceAddressPrefix, action:access}" -o table
 ```
-
-For the real demo, replace step 2 with the actual Azure SRE Agent filing an issue itself.
 
 ---
 
 ## Troubleshooting
 
+### "Agent Extensions are not available for this tenant"
+
+You hit this when calling `PUT .../subagents/{name}`. The custom-subagents feature is preview-gated to internal Microsoft tenants as of 2026-05-12. Mitigation:
+
+- Use the SRE Agent portal's Agent Canvas (Builder → Agent Canvas) to create the same subagents manually from the YAML specs in `sre-config/agents/`.
+- The knowledge base still works — the main agent uses your runbooks via `SearchMemory`.
+- File a request: https://aka.ms/sreagent/region (or the discussions board) for tenant enablement.
+
+### Knowledge base files show `isIndexed: false`
+
+Usually a transient indexing race when many files upload at once. The apply script now waits between uploads. If you still see failures, delete and re-upload one file at a time:
+
+```bash
+TOKEN=$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)
+ENDPOINT=$(az resource show --resource-type Microsoft.App/agents -g OGEDemos_RG -n ogeagenticops --api-version 2025-05-01-preview --query properties.agentEndpoint -o tsv)
+curl -X POST "${ENDPOINT}/api/v1/AgentMemory/upload" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "triggerIndexing=true" \
+  -F "files=@knowledge-base/<file>.md;type=text/markdown"
+```
+
+Then wait 30s and check status:
+
+```bash
+curl -s "${ENDPOINT}/api/v1/AgentMemory/files" -H "Authorization: Bearer ${TOKEN}" | python3 -m json.tool
+```
+
 ### Triage workflow fails on `azure/login@v2`
 
-The federated credential subject must EXACTLY match the workflow's OIDC token subject. Common mismatches:
+The federated credential subject must EXACTLY match the workflow's OIDC token. Common mismatches:
+- Workflow runs on a PR → subject is `pull_request`, not `ref:refs/heads/<branch>`
+- Workflow runs from a `triage/issue-N` branch → subject is `ref:refs/heads/triage/*`
 
-- Branch protection — if the workflow runs on a PR, the subject is `pull_request` not `ref:refs/heads/main`. Add a second federated credential:
-  ```
-  "subject": "repo:Sleepyreaper/ogedemos-sre-showcase:pull_request"
-  ```
+Verify and add federated credentials accordingly (see bootstrap step 5).
 
-### Triage agent returns non-JSON
+### Triage workflow's "Open draft PR" step fails with "GitHub Actions is not permitted to create or approve pull requests"
 
-Reasoning models occasionally produce prose despite `response_format`. Check the `out/proposal.json` file's `raw_output` field. If it's persistent, switch `TRIAGE_MODEL` env var to `gpt-5.4` (synthesis tier) — slightly less reasoning, much stricter format adherence.
+Repo setting. Toggle:
+```bash
+gh api -X PUT /repos/Sleepyreaper/ogedemos-sre-showcase/actions/permissions/workflow \
+  -f default_workflow_permissions=write -F can_approve_pull_request_reviews=false
+```
 
-### SRE Agent provisioning fails with "feature not registered"
+### Subagent rejects temperature parameter
 
-If you're creating the SRE Agent from scratch via CLI, run `az feature show --namespace Microsoft.App --name SREAgentPreview --query properties.state`. If it's still `Registering`, wait — Microsoft preview features can take 15-30 minutes to propagate. In our case the agent (`ogeagenticops`) was created via the portal, which handles the feature reg implicitly.
+Reasoning models (`o3`, `o3-pro`, `o4-mini`, `gpt-5.4-pro`) only support default temperature. For the Foundry-direct agent in `agents/triage/`, the runner skips temperature for the deployments listed in `reasoning_models`. If you add a new reasoning model, append its deployment name there.
 
-### PR opens but the patch file is empty
+### Bicep deployment hits "InternalSubscriptionIsOverQuotaForSku"
 
-Look at the triage agent's `out/proposal.json` — if `fix.patch` is null, the model decided it didn't have enough info. The PR body explains what data it would need. Add details to the issue and re-trigger the workflow by removing and re-adding the `sre-finding` label.
-
-### Deploy workflow fails on Bicep
-
-Bicep deployments use the App Registration's Contributor role on OGEDemos_RG. Confirm:
-- The App Registration's principal ID has Contributor on the RG
-- The scenario file references only resources in OGEDemos_RG (no cross-RG references)
+The cost scenario originally used a P0v3 / B1 App Service Plan; both are zero-quota in Brad NonProd. The current Bicep uses an orphan public IP instead — no compute quota required. If you fork and re-introduce compute, request quota at https://portal.azure.com/#blade/Microsoft_Azure_Capacity.
 
 ---
 
 ## What this proves
 
-This showcase demonstrates **agentic IT-ops in production-realistic form**:
+This showcase demonstrates **agentic IT-ops in three styles**, all running on the same Azure AI Foundry account (`ogeagenticdemos-resource`):
 
-- **Detection** — Microsoft's managed SRE Agent (not a custom build)
-- **Workqueue** — GitHub Issues (audited, addressable, searchable)
-- **Reasoning** — Custom Foundry agent (o4-mini) producing structured fixes
-- **Governance** — Human approval gate via PR review + CODEOWNERS
-- **Safety** — Agent NEVER writes to Azure directly; only proposes changes as PRs
-- **Observability** — Every agent call traced in App Insights
-- **Repeatability** — Whole loop is IaC + workflow YAML, redeployable per engagement
+1. **Microsoft's managed SRE Agent** with curated knowledge base and custom subagents — operational intelligence delivered through `https://sre.azure.com`.
+2. **Custom Foundry-direct agent** with bespoke orchestration — full code control, useful for non-SRE patterns like the DTE Cloud Weather Ops debate experience.
+3. **GitHub-mediated human-in-the-loop** — every change goes through PR review + CODEOWNERS gate before deployment. No agent writes to Azure directly.
 
-Pair this with the DTE Cloud Weather Ops (`https://dteops.ogedemos.com`) to show both a **direct chat-based agentic experience** and an **autonomous detection→fix→approve→deploy** loop running on the same Foundry.
+Combining these patterns gives customers a roadmap: start with the managed agent for general operational toil, add custom Foundry agents for domain-specific workflows, and use GitHub as the audit trail and approval surface for both.
