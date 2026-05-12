@@ -80,7 +80,7 @@ jobs:
           git add -f out/proposal.json
           git commit -m "Triage agent proposal for #${{ github.event.issue.number }}" || echo "Nothing to commit"
 
-          git push -u origin "$BRANCH"
+          git push -u origin "$BRANCH" --force-with-lease
 
           gh pr create \
             --draft \
