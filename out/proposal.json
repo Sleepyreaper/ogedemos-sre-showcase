@@ -1,0 +1,16 @@
+{
+  "summary": "The Bicep template for `ogedemo-security-nsg` currently defines inbound Allow rules for SSH and RDP from any address (`*`), creating a security risk if redeployed. We should restrict these rules to a specific corporate VPN CIDR in the IaC to prevent open management ports while preserving reversibility.",
+  "root_cause": "The IaC (`02-security-open-nsg.bicep`) specifies `sourceAddressPrefix: '*'` for both SSH (22) and RDP (3389) inbound rules, which is overly permissive. The live NSG has no such rules (drift), but running the IaC as-is will recreate the insecure configuration.",
+  "fix": {
+    "kind": "bicep",
+    "filename": "infra/scenarios/02-security-open-nsg.bicep",
+    "patch": "```diff\n--- infra/scenarios/02-security-open-nsg.bicep\n+++ infra/scenarios/02-security-open-nsg.bicep\n@@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-11-01' = {\n       securityRules: [\n         {\n           name: 'allow-ssh-from-anywhere'\n           properties: {\n             priority: 100\n             direction: 'Inbound'\n             access: 'Allow'\n             protocol: 'Tcp'\n-            sourceAddressPrefix: '*'\n+            sourceAddressPrefix: '10.0.0.0/8' // TODO: replace with your corporate VPN CIDR\n             sourcePortRange: '*'\n             destinationAddressPrefix: '*'\n             destinationPortRange: '22'\n@@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-11-01' = {\n         {\n           name: 'allow-rdp-from-anywhere'\n           properties: {\n             priority: 110\n             direction: 'Inbound'\n             access: 'Allow'\n             protocol: 'Tcp'\n-            sourceAddressPrefix: '*'\n+            sourceAddressPrefix: '10.0.0.0/8' // TODO: replace with your corporate VPN CIDR\n             sourcePortRange: '*'\n             destinationAddressPrefix: '*'\n             destinationPortRange: '3389'\n```"
+  },
+  "risk": "If the specified CIDR does not match the actual corporate VPN range, future NSG associations could block legitimate management access. The NSG is currently orphaned, so there is no immediate traffic impact.",
+  "verification": "Run:\n```\naz network nsg show -g OGEDemos_RG -n ogedemo-security-nsg --query \"securityRules[].{name:name, src:sourceAddressPrefix, port:destinationPortRange}\" -o table\n```\nConfirm that `src` is the corporate VPN CIDR (e.g., `10.0.0.0/8`) instead of `*` for both port 22 and 3389 rules.",
+  "human_review_focus": [
+    "Confirm `infra/scenarios/02-security-open-nsg.bicep` is updated",
+    "Verify both SSH and RDP rules have `sourceAddressPrefix` set to the CIDR",
+    "Ensure the CIDR matches the actual corporate VPN range"
+  ]
+}
