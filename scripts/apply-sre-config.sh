@@ -14,8 +14,9 @@
 #
 # Usage:
 #   bash scripts/apply-sre-config.sh
-#   bash scripts/apply-sre-config.sh --kb-only       # only upload knowledge base
-#   bash scripts/apply-sre-config.sh --agents-only   # only create subagents
+#   bash scripts/apply-sre-config.sh --kb-only         # only upload knowledge base
+#   bash scripts/apply-sre-config.sh --agents-only     # only create subagents
+#   bash scripts/apply-sre-config.sh --connector-only  # only set up GitHub connector
 # =============================================================================
 set -uo pipefail
 
@@ -29,10 +30,12 @@ cd "$PROJECT_DIR"
 
 KB_ONLY=""
 AGENTS_ONLY=""
+CONNECTOR_ONLY=""
 for arg in "$@"; do
   case "$arg" in
     --kb-only) KB_ONLY="true" ;;
     --agents-only) AGENTS_ONLY="true" ;;
+    --connector-only) CONNECTOR_ONLY="true" ;;
   esac
 done
 
@@ -159,12 +162,65 @@ print(json.dumps(data['spec']))
   fi
 fi
 
+# ── Step 3: GitHub OAuth Connector ──────────────────────────────────────────
+if [ -z "$KB_ONLY" ] && [ -z "$AGENTS_ONLY" ]; then
+  echo
+  echo "─── Step 3: GitHub OAuth Connector ────────────────────────"
+  # Use whichever token works for both planes (data + ARM are separate audiences).
+  DATA_TOKEN="${DATA_TOKEN:-$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)}"
+
+  # Check if connector already exists
+  EXISTING=$(az rest --method GET \
+    --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors?api-version=${API_VERSION}" \
+    --query "value[?name=='github'].name" -o tsv 2>/dev/null)
+
+  if [ -n "$EXISTING" ]; then
+    echo "  ✓ GitHub connector already exists on this agent."
+  else
+    echo -n "  ↳ Creating GitHub connector (data plane) ... "
+    RESP=$(curl -sS -X PUT "${AGENT_ENDPOINT}/api/v2/extendedAgent/connectors/github" \
+      -H "Authorization: Bearer ${DATA_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d '{"name":"github","type":"AgentConnector","properties":{"dataConnectorType":"GitHubOAuth","dataSource":"github-oauth"}}' \
+      -w "\nHTTP_CODE=%{http_code}")
+    if echo "$RESP" | grep -q "HTTP_CODE=200"; then echo "ok"; else echo "FAILED"; echo "$RESP" | head -3; fi
+
+    echo -n "  ↳ Creating GitHub connector (ARM)        ... "
+    RESP=$(az rest --method PUT \
+      --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors/github?api-version=${API_VERSION}" \
+      --body '{"properties":{"dataConnectorType":"GitHubOAuth","dataSource":"github-oauth"}}' 2>&1)
+    if echo "$RESP" | grep -q "\"provisioningState\": \"Succeeded\""; then echo "ok"; else echo "FAILED"; echo "$RESP" | head -3; fi
+  fi
+
+  echo "  ↳ Fetching OAuth authorization URL ..."
+  OAUTH_RESP=$(curl -sS "${AGENT_ENDPOINT}/api/v1/github/config" -H "Authorization: Bearer ${DATA_TOKEN}")
+  OAUTH_URL=$(echo "$OAUTH_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('oAuthUrl','') or d.get('OAuthUrl',''))" 2>/dev/null)
+  if [ -n "$OAUTH_URL" ]; then
+    echo
+    echo "  ═══════════════════════════════════════════════════════════════"
+    echo "    ACTION REQUIRED — open this URL once to authorize GitHub:"
+    echo "  ═══════════════════════════════════════════════════════════════"
+    echo
+    echo "    $OAUTH_URL"
+    echo
+    echo "  After authorizing, the connector is fully usable."
+  else
+    echo "  (Could not retrieve OAuth URL automatically. Check the agent in the portal.)"
+  fi
+fi
+
 echo
 echo "─── Verifying ──────────────────────────────────────────────"
 echo "Subagents currently on $AGENT_NAME:"
 az rest --method GET \
   --url "https://management.azure.com${AGENT_RESOURCE_ID}/subagents?api-version=${API_VERSION}" \
   --query "value[].name" -o tsv 2>&1 | sed 's/^/  • /'
+
+echo
+echo "Data connectors currently on $AGENT_NAME:"
+az rest --method GET \
+  --url "https://management.azure.com${AGENT_RESOURCE_ID}/DataConnectors?api-version=${API_VERSION}" \
+  --query "value[].{name:name, type:properties.dataConnectorType, state:properties.provisioningState}" -o table 2>&1
 
 echo
 echo "Open the agent UI to test:"
