@@ -1,67 +1,81 @@
-# OGE Demos — Azure SRE + DTE Agentic Ops Showcase
+# OGE Demos — Azure SRE Agent + DTE Agentic Ops Showcase
 
-> **End-to-end agentic IT-ops loop on Azure.** Microsoft's Azure SRE Agent watches the OGEDemos_RG estate, GitHub issues become the work queue, a custom Foundry triage agent proposes fixes, humans approve, GitHub Actions deploy. All governed and evaluated by Azure AI Foundry.
+> **End-to-end agentic IT-ops on Azure.** Microsoft's official **Azure SRE Agent** (`ogeagenticops`) watches `OGEDemos_RG`, uses custom subagents and a curated knowledge base, files GitHub issues with proposed fixes, and gates every change behind human PR review.
+
+## Live URLs
+
+| What | Where |
+|---|---|
+| 🤖 **SRE Agent** (managed portal) | https://sre.azure.com |
+| 🌐 **DTE Cloud Weather Ops** (custom Foundry app) | https://dteops.ogedemos.com |
+| 📦 **This repo** | https://github.com/Sleepyreaper/ogedemos-sre-showcase |
+| 🔍 **Agent endpoint** | https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai |
+
+## Architecture (Microsoft-native pattern)
 
 ```
-   ┌────────────────────────────────────────────────────────────────┐
-   │                     OGEDemos_RG (Azure)                         │
-   │                                                                  │
-   │  Storm scenario  Security scenario  Cost scenario  Reliab. scn   │
-   │  (autoscale)     (open NSG)         (orphan disk)  (expired cert)│
-   │                                                                  │
-   │                          ▲                                       │
-   │                          │ monitors / detects                    │
-   │                  ┌───────┴────────┐                              │
-   │                  │ Azure SRE Agent│ ← Microsoft preview          │
-   │                  │  (Microsoft.App)│                              │
-   │                  └───────┬────────┘                              │
-   └──────────────────────────│───────────────────────────────────────┘
-                              │ files
-                              ▼
-   ┌──────────────────────────────────────────────────────────────────┐
-   │                    GitHub (this repo)                             │
-   │                                                                   │
-   │   Issue opened   ──webhook──▶  GitHub Action ──▶  Foundry agent  │
-   │   (incident)                   (issue-triage.yml)  (triage/)     │
-   │                                                       │           │
-   │                                                       ▼           │
-   │                                              Draft PR with fix   │
-   │                                                  +  evidence     │
-   │                                                       │           │
-   │                                                       ▼           │
-   │                                              Human review        │
-   │                                              (CODEOWNERS gate)   │
-   │                                                       │           │
-   │                                                       ▼           │
-   │                                              Merge → deploy.yml  │
-   │                                              redeploys OGEDemos  │
-   └──────────────────────────────────────────────────────────────────┘
-                              ▲
-                              │ traces + evals
-   ┌──────────────────────────│───────────────────────────────────────┐
-   │            Azure AI Foundry (OGEAgenticDemos)                    │
-   │  • Hosts the triage agent (o4-mini / gpt-5.4)                    │
-   │  • App Insights tracing on every agent call                      │
-   │  • Continuous evaluation: groundedness, relevance, safety         │
-   │  • Same governance plane as the DTE Cloud Weather Ops             │
-   └──────────────────────────────────────────────────────────────────┘
+   ┌────────────────────────────────────────────────────────────────────┐
+   │                       OGEDemos_RG (Azure)                           │
+   │                                                                      │
+   │  Storm scenario  Security scenario  Cost scenario  Reliab. scn       │
+   │  (autoscale)     (open NSG)         (orphan disk)  (expired cert)    │
+   │                                                                      │
+   │                              ▲                                       │
+   │                              │ knowledge graph + telemetry           │
+   │      ┌───────────────────────┴────────────────────────────┐          │
+   │      │  Azure SRE Agent — ogeagenticops                   │          │
+   │      │  Microsoft.App/agents · Anthropic model · review   │          │
+   │      │                                                    │          │
+   │      │  Knowledge Base (data-plane upload, this repo):    │          │
+   │      │   • ogedemos-architecture.md                       │          │
+   │      │   • security-drift-runbook.md                      │          │
+   │      │   • cost-waste-runbook.md                          │          │
+   │      │   • reliability-runbook.md                         │          │
+   │      │   • storm-readiness-runbook.md                     │          │
+   │      │   • github-issue-triage.md                         │          │
+   │      │   • incident-report-template.md                    │          │
+   │      │                                                    │          │
+   │      │  Custom subagents (azuresre.ai/v1 YAML):           │          │
+   │      │   • security-fixer       (Review mode)             │          │
+   │      │   • cost-optimizer       (Review mode)             │          │
+   │      │   • reliability-fixer    (Review mode)             │          │
+   │      │   • code-analyzer        (Review mode)             │          │
+   │      │   • issue-triager        (Autonomous)              │          │
+   │      │                                                    │          │
+   │      │  GitHub OAuth Connector → this repo                │          │
+   │      └────────────────────────┬───────────────────────────┘          │
+   └────────────────────────────────┼─────────────────────────────────────┘
+                                    │ files
+                                    ▼
+   ┌────────────────────────────────────────────────────────────────────┐
+   │                          GitHub (this repo)                        │
+   │                                                                    │
+   │   Issue with proposed fix                                          │
+   │        │                                                           │
+   │        ▼                                                           │
+   │   PR (human review, CODEOWNERS gate)                              │
+   │        │                                                           │
+   │        ▼                                                           │
+   │   Merge → .github/workflows/deploy.yml redeploys to OGEDemos_RG    │
+   └────────────────────────────────────────────────────────────────────┘
 ```
 
-## What's in here
+## What's in this repo
 
 | Path | Purpose |
 |------|---------|
-| `infra/scenarios/` | Bicep for 4 intentionally-broken resources in `OGEDemos_RG` |
-| `agents/triage/` | Custom Foundry agent that triages GitHub issues into proposed fixes |
-| `.github/workflows/issue-triage.yml` | Webhook handler: issue opened → invoke triage agent → draft PR |
-| `.github/workflows/deploy.yml` | On merge to `main`, redeploys affected scenarios |
-| `scripts/` | Bootstrap + maintenance scripts (deploy scenarios, simulate SRE findings) |
-| `docs/` | End-to-end runbook, agent prompts, demo script |
-
-## Live demos
-
-- **DTE Cloud Weather Ops** — https://dteops.ogedemos.com (multi-agent debate UI)
-- **SRE Agent + GitHub loop** — this repo (issues + workflow runs are the demo surface)
+| `infra/scenarios/` | 4 broken-on-purpose Bicep templates deployed to `OGEDemos_RG` |
+| `knowledge-base/` | Markdown runbooks loaded into the SRE Agent's memory |
+| `sre-config/agents/` | YAML specs (`azuresre.ai/v1`) for custom subagents |
+| `sre-config/connectors/` | YAML for the GitHub OAuth data connector |
+| `scripts/apply-sre-config.sh` | Uploads KB + creates subagents on `ogeagenticops` |
+| `scripts/setup-github.sh` | PAT-based GitHub connector setup (fallback for portal OAuth) |
+| `scripts/check-sre-agent.sh` | Read-only verifier of the agent's current state |
+| `scripts/simulate-sre-issue.sh` | Files a synthetic issue without waiting for the real agent |
+| `scripts/seed-expiring-cert.sh` | Injects the near-expiry cert into the Key Vault scenario |
+| `agents/triage/` | **Alternative pattern** — Foundry-direct Python triage agent run in GitHub Actions |
+| `.github/workflows/` | issue-triage.yml + deploy.yml |
+| `docs/` | runbook, scenarios, agent-design |
 
 ## Quick start
 
@@ -69,40 +83,71 @@
 # 1. Deploy the broken scenarios to OGEDemos_RG
 cd infra/scenarios && bash deploy-all.sh
 
-# 2. Verify the SRE Agent (ogeagenticops) is healthy and see what
-#    still needs to be configured for the GitHub bridge
-bash scripts/check-sre-agent.sh
+# 2. Apply this repo's config to the SRE Agent
+bash scripts/apply-sre-config.sh
+# Uploads 7 markdown runbooks via data plane.
+# Attempts to create 5 subagents via management plane (may be tenant-gated;
+# see "Tenant gates" below).
 
-# 3. Configure GitHub secrets for the triage agent (uses Workload Identity Federation)
-gh secret set AZURE_OPENAI_ENDPOINT --body "https://ogeagenticdemos-resource.cognitiveservices.azure.com/"
-gh secret set AZURE_CLIENT_ID --body "<workload-identity-client-id>"
-gh secret set AZURE_TENANT_ID --body "<tenant>"
-gh secret set AZURE_SUBSCRIPTION_ID --body "<sub>"
+# 3. Wire GitHub to the SRE Agent — two options:
+#    A) Portal (recommended):  open ogeagenticops in https://sre.azure.com,
+#       Builder → Connectors → Add GitHub, OAuth into Sleepyreaper/ogedemos-sre-showcase
+#    B) PAT-based via data plane:
+#       export GITHUB_PAT=ghp_xxxxxxxxxxxx
+#       bash scripts/setup-github.sh
 
-# 4. (Optional) Set up the AzMonitor → GitHub bridge if you're not
-#    wiring the SRE Agent's gitHubConfiguration directly in the portal
-bash scripts/setup-azmon-github-bridge.sh
-
-# 5. Open a synthetic incident issue to test the loop end-to-end
-bash scripts/simulate-sre-issue.sh "Orphaned disk drift detected" cost
+# 4. Fire a synthetic test (works without the agent)
+bash scripts/simulate-sre-issue.sh "Open SSH on mgmt subnet" security
 ```
 
-## See also
+## Tenant gates (as of 2026-05-12)
 
-- [`docs/runbook.md`](docs/runbook.md) — Full operational runbook
-- [`docs/scenarios.md`](docs/scenarios.md) — The four demo scenarios in detail
-- [`docs/agent-design.md`](docs/agent-design.md) — How the triage agent is built
-- [`agents/triage/`](agents/triage/) — Agent source code
+- ✅ **Knowledge Base upload** — works via the data plane API on this tenant
+- ⚠️ **Custom subagents** — the SRE Agent API returns `Agent Extensions are not available for this tenant. This feature is restricted to internal tenants only.` Configure subagents via the **SRE Agent portal** (Builder → Agent Canvas) until the feature GAs to your tenant.
+- ✅ **GitHub OAuth connector** — works via the portal Builder → Connectors flow
+
+The YAML specs in `sre-config/agents/` are authoritative — paste them into the portal's Agent Canvas to apply manually.
+
+## Two patterns demonstrated
+
+This repo deliberately shows **both** common agentic-ops patterns side-by-side:
+
+| Pattern | Where | When to choose |
+|---|---|---|
+| **SRE-Agent-native** | `ogeagenticops` + this repo's `knowledge-base/` + `sre-config/` | Use Microsoft's managed agent platform; minimal custom code; leverages built-in tools (Azure CLI, Log Analytics, App Insights, code interpreter); deep GitHub + Teams integration |
+| **Foundry-direct** | `agents/triage/` + `.github/workflows/issue-triage.yml` | Use raw Azure OpenAI / Foundry models in your own runtime when you need full control over the orchestration loop, debate dynamics, or non-SRE workloads. This is what powers the DTE Cloud Weather Ops at https://dteops.ogedemos.com |
+
+Both write to the same GitHub repo, both use Azure AI Foundry (`ogeagenticdemos-resource`) for the underlying models, both gate every change behind human PR review.
+
+## Demo scenarios
+
+Each scenario is intentionally broken so the SRE Agent (or the Foundry triage agent) has something realistic to detect, classify, and propose a fix for.
+
+| Scenario | Resource | Expected finding |
+|---|---|---|
+| Storm | `ogedemo-storm-vmss` | VMSS has no autoscale settings; customer-portal tier can't grow under load |
+| Security | `ogedemo-security-nsg` | SSH (22) + RDP (3389) Allow inbound from `0.0.0.0/0` |
+| Cost | `ogedemo-cost-orphan-disk` + `ogedemo-cost-orphan-pip` | 1 TB Premium SSD unattached + Standard public IP unassociated (~$138/mo waste) |
+| Reliability | `ogekv...` / `near-expiry-cert` | Cert expires in <30 days, no rotation policy |
+
+Full per-scenario detail in [`docs/scenarios.md`](docs/scenarios.md).
 
 ## Status
 
 | Component | Status |
 |---|---|
-| GitHub repo | ✅ created |
-| Demo scenarios (Bicep) | ✅ scaffolded |
-| Triage agent | ✅ scaffolded |
-| GitHub workflows | ✅ scaffolded |
-| Azure SRE Agent (`ogeagenticops`) | ✅ provisioned in `OGEDemos_RG`, model=Anthropic Automatic, mode=review, scope=OGEDemos_RG |
-| SRE Agent → GitHub bridge | ⏳ choose path A (configure in portal) or B (Logic App bridge — `scripts/setup-azmon-github-bridge.sh`) |
-| Workload Identity Federation | ⏳ runbook §3 |
-| Deployed live demo scenarios | ⏳ `bash infra/scenarios/deploy-all.sh` when ready |
+| GitHub repo | ✅ |
+| Demo scenarios (Bicep) | ✅ deployed to OGEDemos_RG |
+| Knowledge base (7 runbooks) | ✅ uploaded + indexed on `ogeagenticops` |
+| Custom subagents (YAML) | ⚠️ specs ready in `sre-config/agents/`; apply via portal (tenant-gated) |
+| GitHub OAuth connector | ⏳ wire in portal (Builder → Connectors) |
+| Triage workflow (Foundry-direct alternative) | ✅ end-to-end verified (issue #1 → PR #2) |
+| Workload Identity Federation | ✅ |
+| DTE Cloud Weather Ops (sibling app) | ✅ live at dteops.ogedemos.com |
+
+## See also
+
+- [`docs/runbook.md`](docs/runbook.md) — full operational runbook
+- [`docs/scenarios.md`](docs/scenarios.md) — what each demo scenario does and why
+- [`docs/agent-design.md`](docs/agent-design.md) — how the SRE-Agent-native vs Foundry-direct patterns compare
+- [`docs/azure-sre-resources.md`](docs/azure-sre-resources.md) — curated references to Microsoft's official SRE Agent docs, labs, and blogs
