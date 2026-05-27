@@ -1,0 +1,17 @@
+{
+  "summary": "The Bicep template for `ogedemo-security-nsg` defines inbound NSG rules allowing SSH (22) and RDP (3389) from any source (`*`), posing a potential security risk on redeploy. We should restrict these management ports to a known CIDR by introducing a `managementCidr` parameter and updating the two rules accordingly.",
+  "root_cause": "The NSG resource in infra/scenarios/02-security-open-nsg.bicep uses `sourceAddressPrefix: '*'` for SSH and RDP rules, opening them to 0.0.0.0/0.",
+  "fix": {
+    "kind": "bicep",
+    "filename": "infra/scenarios/02-security-open-nsg.bicep",
+    "patch": "@@ -4,6 +4,9 @@\n param prefix string = 'ogedemo'\n @description('Location for resources.')\n param location string = resourceGroup().location\n+@description('Approved management CIDR range for SSH/RDP access.')\n+param managementCidr string = '10.0.0.0/24'\n+\n resource nsg 'Microsoft.Network/networkSecurityGroups@2023-11-01' = {\n   name: '${prefix}-security-nsg'\n@@ -33,7 +36,7 @@\n         direction: 'Inbound'\n         access: 'Allow'\n         protocol: 'Tcp'\n-        sourceAddressPrefix: '*'\n+        sourceAddressPrefix: managementCidr\n         sourcePortRange: '*'\n         destinationAddressPrefix: '*'\n         destinationPortRange: '22'\n@@ -46,7 +49,7 @@\n         direction: 'Inbound'\n         access: 'Allow'\n         protocol: 'Tcp'\n-        sourceAddressPrefix: '*'\n+        sourceAddressPrefix: managementCidr\n         sourcePortRange: '*'\n         destinationAddressPrefix: '*'\n         destinationPortRange: '3389'"
+  },
+  "risk": "If the `managementCidr` value is misconfigured, SSH/RDP may be restricted to an incorrect range, potentially blocking legitimate administrative access. Ensure the CIDR matches your management network.",
+  "verification": "1. Redeploy the Bicep template.\n2. Run `az network nsg rule list -g OGEDemos_RG --nsg-name ogedemo-security-nsg --query \"[?direction=='Inbound'].{name:name,source:sourceAddressPrefix,port:destinationPortRange}\" -o table`.\n3. Confirm that `sourceAddressPrefix` for both rules equals the specified `managementCidr` and not `*`.\n4. Re-run Defender for Cloud to verify the open-management-port finding is cleared.",
+  "human_review_focus": [
+    "Correct placement and default of `managementCidr` parameter",
+    "Accurate replacement of wildcards in SSH/RDP rules",
+    "Verification of rule priorities and descriptions",
+    "Ensuring no unintended changes to other parts of the NSG resource"
+  ]
+}
