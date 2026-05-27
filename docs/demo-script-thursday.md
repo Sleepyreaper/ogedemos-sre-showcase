@@ -2,7 +2,7 @@
 
 > **Live URLs to keep open in browser tabs:**
 > 1. **Reliability view**: https://dteops.ogedemos.com (loads on Reliability tab)
-> 2. **Cloud Weather Ops chat**: https://dteops.ogedemos.com (click "Cloud Weather Ops" tab)
+> 2. **Cloud Weather Ops chat**: https://dteops.ogedemos.com (click "Cloud Weather Operations" tab)
 > 3. **SRE Agent portal**: https://sre.azure.com (have `ogeagenticops` already open)
 > 4. **GitHub issues**: https://github.com/Sleepyreaper/ogedemos-sre-showcase/issues
 > 5. **Backup**: pre-recorded video (`/Users/sleepy/Desktop/demo-backup.mp4` — record day-before)
@@ -21,10 +21,10 @@
 
 ### [0:00 – 0:30] Open with the problem
 
-**Slide:** "DTE Energy: 2.3 million customers in Southeast Michigan"
+**Slide:** "A power company in Southern Michigan — 2.3 million customers"
 
 **Say:**
-> "When a storm hits Detroit, the systems that keep the lights on are running on Azure. SCADA, AMI metering for 2.28 million smart meters, the outage management system, the customer portal. These aren't optional. When the portal goes down during a storm, a family who lost power can't even check restoration estimates.
+> "When a storm hits Southern Michigan, the systems that keep the lights on are running on Azure. SCADA, AMI metering for 2.28 million smart meters, the outage management system, the customer portal. These aren't optional. When the portal goes down during a storm, a family who lost power can't even check restoration estimates.
 >
 > Today I'm going to show you how we're using **Azure AI Foundry** and the **Azure SRE Agent** to keep that platform running — not by having more engineers, but by giving the engineers we have an agentic team that argues, investigates, and proposes fixes for them."
 
@@ -33,7 +33,7 @@
 **Click:** Open https://dteops.ogedemos.com (Reliability tab loads by default)
 
 **Say:**
-> "This is what an SRE in DTE's cloud ops team sees first thing on Monday morning. It's an executive reliability dashboard — score out of 100, four pillars: Security, Governance, Resilience, Cost. All of it backed by **real Azure Resource Graph** and **Service Health** queries — no canned data."
+> "This is what an SRE in the utility's cloud ops team sees first thing on Monday morning. It's an executive reliability dashboard — score out of 100, four pillars: Security, Governance, Resilience, Cost. All of it backed by **real Azure Resource Graph** and **Service Health** queries — no canned data."
 
 **Click:** Briefly hover the score ring and pillar bars
 
@@ -42,7 +42,7 @@
 
 ### [1:30 – 2:30] Switch to Cloud Weather Ops — introduce the crew
 
-**Click:** Top nav → "Cloud Weather Ops" tab
+**Click:** Top nav → "Cloud Weather Operations" tab
 
 **Say:**
 > "Now meet the team. Six AI agents, each named after a power-grid concept. They run on Azure AI Foundry — `gpt-5.4` for the synthesis agents, `o4-mini` reasoning models for the analytical work."
@@ -116,11 +116,11 @@
 **Say:**
 > "What we just saw — two complementary patterns, both running on the same Azure AI Foundry:
 >
-> 1. **DTE Cloud Weather Ops** — six specialist agents that debate. We built it on the OpenAI SDK and Managed Identity. About 500 lines of Python. No framework.
+> 1. **Cloud Weather Operations** — six specialist agents that debate. We built it on the OpenAI SDK and Managed Identity. About 500 lines of Python. No framework.
 >
 > 2. **Azure SRE Agent** — Microsoft's managed product. Drop-in, custom subagents in YAML, knowledge base in Markdown, native GitHub integration.
 >
-> Both are governed by the same Foundry account. Both are observed in the same Application Insights. Both gate every change behind human PR approval. And both can be reused for any DTE-style customer."
+> Both are governed by the same Foundry account. Both are observed in the same Application Insights. Both gate every change behind human PR approval. And both can be reused for any utility-style customer."
 
 ### [9:30 – 10:00] Close
 
@@ -133,7 +133,7 @@
 
 ## Fallback plan — if something breaks live
 
-### DTE app slow / errors:
+### Cloud Weather Ops app slow / errors:
 1. **Cut to the pre-recorded backup video** (~3 min of the chat working)
 2. Continue narrative: "Live cloud demos in front of 2000 people, what can possibly go wrong"
 3. Recover with: "Here's the same flow we just ran, recorded earlier"
@@ -148,7 +148,7 @@
 2. "This PR was generated the same way — fix proposal, human review gate, ready to merge"
 
 ### Live Foundry rate-limit:
-1. Switch DTE app to **Demo mode** (Demo Data toggle in top nav)
+1. Switch Cloud Weather Ops to **Demo mode** (Demo Data toggle in top nav)
 2. Pre-baked debate scenarios — no model calls at all
 3. Same content, no risk
 
@@ -161,7 +161,7 @@
 
 ## Pre-flight checklist (T-30 min)
 
-- [ ] DTE app loads in <3s (warm)
+- [ ] Cloud Weather Ops loads in <3s (warm)
 - [ ] Single-agent `/api/ask` returns in <12s
 - [ ] `ogeagenticops` agent shows `Running` (not BuildingKnowledgeGraph)
 - [ ] Issue #3 still open on showcase repo
@@ -188,13 +188,13 @@
 > "Every change ships as a PR. Every PR has CODEOWNERS. No agent touches Azure without a human signature on the diff. Agentic ops doesn't mean autonomous ops."
 
 **The scale story:**
-> "DTE's SRE team is small. The agents aren't bigger headcount — they're more *expertise* per engineer. One person + six agents has the throughput of a small team."
+> "The utility's SRE team is small. The agents aren't bigger headcount — they're more *expertise* per engineer. One person + six agents has the throughput of a small team."
 
 **The technology layer:**
 > "Built on Azure AI Foundry. Models live in our account. Telemetry flows to our Application Insights. Governed by our Azure Policy. Same security posture as everything else they run in Azure."
 
 **The numbers (cite if asked):**
-- DTE: 2.3 million customers · 2.28M smart meters
-- DTE app: ~$0.06-0.12 per crew query · ~$0.15-0.75/day total
+- Utility: ~2.3 million customers · 2.28M smart meters
+- Cloud Weather Ops: ~$0.06-0.12 per crew query · ~$0.15-0.75/day total
 - Microsoft SRE Agent internal: 1,300+ agents · 35,000+ incidents mitigated · 20,000+ engineering hours saved
 - Microsoft App Service time-to-mitigate: 40.5 hours → 3 minutes (per the post-GA blog)
