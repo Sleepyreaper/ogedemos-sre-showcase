@@ -51,7 +51,7 @@ Cost figures should always come from Azure Cost Management or pricing.azure.com 
    ```bash
    az monitor metrics list --resource <resource-id> \
      --metric "Percentage CPU" \
-     --interval PT1H --offset 30d \
+     --interval PT1H --offset P30D \
      --aggregation Average Maximum
    ```
 

@@ -8,11 +8,11 @@ on:
   issues:
     types: [opened, labeled]
 
-# Serialize per-issue: when the SRE Agent files an issue + adds 3 labels,
-# the workflow would otherwise fire 4× simultaneously and race on git push.
+# Serialize per-issue. We do NOT cancel-in-progress: cancelling mid-push can
+# leave the triage branch in an inconsistent state and clobber human edits.
 concurrency:
   group: triage-issue-${{ github.event.issue.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -23,13 +23,19 @@ permissions:
 jobs:
   triage:
     runs-on: ubuntu-latest
-    # Only trigger on issues labeled "sre-finding" (set automatically by
-    # the SRE Agent webhook, or manually for testing).
-    if: contains(github.event.issue.labels.*.name, 'sre-finding') || github.event.action == 'opened'
+    # Strict gate: only run if the 'sre-finding' label is present.
+    # - opened: must already carry the label at creation time
+    # - labeled: must be the 'sre-finding' label specifically (avoids re-firing
+    #   on every label add by the autonomous issue-triager subagent)
+    if: |
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'sre-finding'))
+      || (github.event.action == 'labeled' && github.event.label.name == 'sre-finding')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history for the "human commits present?" check below
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,11 +53,30 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Persist issue payload to file
+        env:
+          ISSUE_JSON: ${{ toJSON(github.event.issue) }}
         run: |
           mkdir -p out
-          cat > out/issue.json <<'EOF'
-          ${{ toJSON(github.event.issue) }}
-          EOF
+          printf '%s' "$ISSUE_JSON" > out/issue.json
+
+      - name: Extract optional ARG query from issue body
+        id: arg
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # Body is read from an env var so it can never be interpreted as shell.
+          # grep is told to read stdin, never a filename derived from input.
+          STATE_QUERY="$(printf '%s' "$ISSUE_BODY" | grep -oP '(?<=ARG-QUERY:\s).+' | head -1 || true)"
+          # Only forward whitelisted KQL: must start with a known resource-graph table.
+          case "$STATE_QUERY" in
+            Resources*|ResourceContainers*|SecurityResources*|HealthResources*|PolicyResources*|"") ;;
+            *) echo "::warning::Rejecting non-allowlisted ARG query"; STATE_QUERY="" ;;
+          esac
+          {
+            echo "query<<__EOQ__"
+            printf '%s\n' "$STATE_QUERY"
+            echo "__EOQ__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run triage agent
         env:
@@ -59,38 +84,54 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TRIAGE_MODEL: o4-mini
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          STATE_QUERY: ${{ steps.arg.outputs.query }}
         run: |
-          STATE_QUERY=$(echo "${{ github.event.issue.body }}" | grep -oP '(?<=ARG-QUERY:\s).+' | head -1 || true)
           python -m agents.triage \
             --issue-file out/issue.json \
             --out-dir out \
-            --state-query "${STATE_QUERY:-}"
+            --state-query "$STATE_QUERY"
 
       - name: Open draft PR
         env:
           GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          BRANCH="triage/issue-${{ github.event.issue.number }}"
+          BRANCH="triage/issue-${ISSUE_NUMBER}"
           git config user.name "ogedemos-triage[bot]"
           git config user.email "triage@ogedemos.com"
-          git checkout -b "$BRANCH"
 
-          # Copy any generated patch into the repo at its proposed path
+          # Refuse to overwrite reviewer commits on an existing triage branch.
+          if git fetch origin "$BRANCH" 2>/dev/null && git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+            HUMAN=$(git log --format='%ae' "origin/$BRANCH" ^origin/main 2>/dev/null \
+                    | grep -v -F 'triage@ogedemos.com' | head -1 || true)
+            if [ -n "$HUMAN" ]; then
+              echo "::notice::Human commits on $BRANCH detected ($HUMAN); not overwriting."
+              exit 0
+            fi
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -b "$BRANCH"
+          fi
+
+          # main.py validates that proposal.json's fix.filename is a safe relative
+          # path under infra/ or scripts/ — see agents/triage/main.py:_safe_patch_path.
           PATCH_FILE=$(jq -r '.fix.filename // empty' out/proposal.json)
           if [ -n "$PATCH_FILE" ]; then
+            STAGED_NAME=$(jq -r '.fix.staged_basename // empty' out/proposal.json)
+            [ -n "$STAGED_NAME" ] || { echo "::error::proposal.json missing staged_basename"; exit 1; }
             mkdir -p "$(dirname "$PATCH_FILE")"
-            cp "out/$(basename "$PATCH_FILE")" "$PATCH_FILE" 2>/dev/null || true
-            git add "$PATCH_FILE" || true
+            cp "out/$STAGED_NAME" "$PATCH_FILE"
+            git add "$PATCH_FILE"
           fi
-          # out/ is gitignored; force-add the audit artifact
           git add -f out/proposal.json
-          git commit -m "Triage agent proposal for #${{ github.event.issue.number }}" || echo "Nothing to commit"
+          git commit -m "Triage agent proposal for #${ISSUE_NUMBER}" || echo "Nothing to commit"
 
-          git push -u origin "$BRANCH" --force-with-lease
+          git push -u origin "$BRANCH"
 
           gh pr create \
             --draft \
-            --title "[Triage] ${{ github.event.issue.title }}" \
+            --title "[Triage] ${ISSUE_TITLE}" \
             --body-file out/pr-body.md \
             --base main \
             --head "$BRANCH" \
@@ -102,9 +143,10 @@ jobs:
       - name: Link PR back to issue
         env:
           GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          PR_URL=$(gh pr list --head "triage/issue-${{ github.event.issue.number }}" --json url --jq '.[0].url' || echo "")
+          PR_URL=$(gh pr list --head "triage/issue-${ISSUE_NUMBER}" --json url --jq '.[0].url' || echo "")
           if [ -n "$PR_URL" ]; then
-            gh issue comment ${{ github.event.issue.number }} \
+            gh issue comment "${ISSUE_NUMBER}" \
               --body "🤖 Triage agent has proposed a fix in $PR_URL — please review and approve/reject."
           fi

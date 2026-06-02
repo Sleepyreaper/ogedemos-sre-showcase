@@ -35,6 +35,7 @@ spec:
     or anything outside that resource group.
 
     NEVER apply changes directly to Azure. Review mode — propose only.
+    Write tools (`RunAzCliWriteCommands`) are NOT granted to this subagent.
   handoff_description: Finds orphaned/idle/oversized resources and opens a GitHub issue with verified savings + cleanup plan
   agent_type: Review
   tools:

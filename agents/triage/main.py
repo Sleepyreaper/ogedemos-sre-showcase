@@ -21,13 +21,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import re
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from openai import AzureOpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+
+
+# Reasoning-model deployment-name prefixes. These models:
+#   - require role="developer" in place of "system"
+#   - use max_completion_tokens, not max_tokens
+#   - don't accept a non-default temperature
+REASONING_MODEL_PREFIXES: tuple[str, ...] = ("o1", "o3", "o4", "gpt-5-pro", "gpt-5.4-pro")
+
+# fix.filename whitelist: only these roots are allowed in the auto-generated PR.
+# Prevents the LLM (fed untrusted issue content) from rewriting workflows or
+# arbitrary repo files via a crafted relative path.
+SAFE_PATCH_ROOTS: tuple[str, ...] = ("infra/", "scripts/")
+
+LOG = logging.getLogger("ogedemos-triage")
 
 
 SYSTEM_PROMPT = """You are the Triage Agent for the OGEDemos SRE showcase.
@@ -96,8 +112,15 @@ def _client() -> tuple[AzureOpenAI, str]:
         azure_endpoint=endpoint,
         azure_ad_token_provider=token_provider,
         api_version="2025-01-01-preview",
+        max_retries=4,
+        timeout=120.0,
     )
     return client, deployment
+
+
+def _is_reasoning_model(deployment: str) -> bool:
+    name = deployment.lower()
+    return any(name.startswith(p) for p in REASONING_MODEL_PREFIXES)
 
 
 def triage(ctx: IssueContext) -> dict:
@@ -118,14 +141,31 @@ CURRENT AZURE STATE (Resource Graph snapshot)
 
 Produce the JSON triage object now."""
 
-    response = client.chat.completions.create(
-        model=deployment,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+    # Reasoning models (o1/o3/o4) require the "developer" role and don't honour
+    # `temperature`. Standard chat models use "system".
+    system_role = "developer" if _is_reasoning_model(deployment) else "system"
+    kwargs: dict = {
+        "model": deployment,
+        "messages": [
+            {"role": system_role, "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
         ],
-        response_format={"type": "json_object"},
-    )
+        "response_format": {"type": "json_object"},
+    }
+    if _is_reasoning_model(deployment):
+        kwargs["max_completion_tokens"] = 4000
+    else:
+        kwargs["max_tokens"] = 4000
+        kwargs["temperature"] = 0.2
+
+    try:
+        response = client.chat.completions.create(**kwargs)
+    except Exception as exc:  # noqa: BLE001 — surface every failure to the PR body
+        LOG.exception("chat.completions.create failed")
+        return {
+            "summary": f"Triage agent could not reach the Foundry model: {exc}",
+            "fix": None,
+        }
 
     raw = response.choices[0].message.content or "{}"
     try:
@@ -162,12 +202,64 @@ def _gather_azure_state(resource_query_hint: str) -> dict | None:
         return {"query": resource_query_hint, "error": str(exc)}
 
 
+def _safe_patch_path(raw: str) -> PurePosixPath:
+    """Return a sanitized POSIX-style relative path under one of SAFE_PATCH_ROOTS.
+
+    Raises ValueError if the path escapes those roots or contains '..' segments.
+    Defends against LLM-generated fix.filename values that try to overwrite
+    workflows or any other repo file outside infra/ or scripts/.
+    """
+    if not raw or not isinstance(raw, str):
+        raise ValueError("fix.filename missing or not a string")
+    candidate = raw.replace("\\", "/").lstrip("/")
+    p = PurePosixPath(candidate)
+    if p.is_absolute():
+        raise ValueError(f"absolute paths not allowed: {raw}")
+    parts = p.parts
+    if any(seg in ("..", "") for seg in parts):
+        raise ValueError(f"path contains '..' or empty segment: {raw}")
+    flat = str(p)
+    if not flat.startswith(SAFE_PATCH_ROOTS):
+        raise ValueError(
+            f"path must start with one of {SAFE_PATCH_ROOTS!r}: {raw}"
+        )
+    return p
+
+
+def _fence_for(content: str) -> str:
+    """Pick a fence string long enough to escape any backtick run inside `content`.
+
+    Standard 3-backtick fences break when the patch itself contains ``` (e.g.
+    nested markdown blocks). We compute max-backtick-run + 1 so the fence is
+    always safe.
+    """
+    longest = max((len(m.group(0)) for m in re.finditer(r"`+", content)), default=0)
+    return "`" * max(3, longest + 1)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue-file", required=True, help="Path to JSON file with issue payload")
     parser.add_argument("--out-dir", default="./out", help="Where to write triage artifacts")
     parser.add_argument("--state-query", default="", help="Optional ARG query to attach")
     args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    # Initialise the OpenTelemetry distro if App Insights is wired up. The
+    # workflow exports APPLICATIONINSIGHTS_CONNECTION_STRING from the matching
+    # GitHub secret; if absent (local dev), we no-op.
+    if os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+        try:
+            from azure.monitor.opentelemetry import configure_azure_monitor
+
+            configure_azure_monitor(logger_name=LOG.name)
+            LOG.info("Azure Monitor OpenTelemetry distro initialised")
+        except Exception:  # noqa: BLE001 — telemetry must never crash the agent
+            LOG.exception("OpenTelemetry init failed; continuing without traces")
 
     issue = json.loads(Path(args.issue_file).read_text())
     ctx = IssueContext(
@@ -182,15 +274,29 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "proposal.json").write_text(json.dumps(proposal, indent=2))
-
-    md = _render_pr_body(ctx, proposal)
-    (out_dir / "pr-body.md").write_text(md)
 
     fix = proposal.get("fix") or {}
     if fix.get("patch") and fix.get("filename"):
-        patch_path = out_dir / Path(fix["filename"]).name
-        patch_path.write_text(fix["patch"])
+        try:
+            safe_rel = _safe_patch_path(fix["filename"])
+        except ValueError as e:
+            LOG.warning("Rejecting unsafe patch path %r: %s", fix.get("filename"), e)
+            proposal.setdefault("warnings", []).append(
+                f"Patch filename rejected by guard: {e}. No patch was staged."
+            )
+            proposal["fix"] = None
+        else:
+            # Use sanitized relative path everywhere downstream; write the staged
+            # file to a basename-only artifact so the workflow can't be tricked
+            # into reading from a path the LLM controls.
+            staged = "patch-" + safe_rel.name
+            (out_dir / staged).write_text(fix["patch"])
+            proposal["fix"]["filename"] = str(safe_rel)
+            proposal["fix"]["staged_basename"] = staged
+
+    (out_dir / "proposal.json").write_text(json.dumps(proposal, indent=2))
+    md = _render_pr_body(ctx, proposal)
+    (out_dir / "pr-body.md").write_text(md)
 
     print(f"✓ Wrote {out_dir / 'proposal.json'} and {out_dir / 'pr-body.md'}")
     return 0
@@ -198,12 +304,18 @@ def main(argv: list[str] | None = None) -> int:
 
 def _render_pr_body(ctx: IssueContext, proposal: dict) -> str:
     fix = proposal.get("fix") or {}
+    patch_text = fix.get("patch") or "(no patch generated)"
+    fence = _fence_for(patch_text)
+    warnings = proposal.get("warnings") or []
+    warnings_md = (
+        "\n".join(f"> ⚠️ {w}" for w in warnings) + "\n\n" if warnings else ""
+    )
     return f"""## Triage Agent Proposal — closes #{ctx.number}
 
 > Generated by the OGEDemos Triage Agent (o4-mini via OGEAgenticDemos Foundry).
 > **Human review required before merge.**
 
-### Summary
+{warnings_md}### Summary
 
 {proposal.get("summary", "(not provided)")}
 
@@ -213,9 +325,9 @@ def _render_pr_body(ctx: IssueContext, proposal: dict) -> str:
 
 ### Proposed fix ({fix.get("kind", "n/a")})
 
-```{fix.get("kind", "")}
-{fix.get("patch", "(no patch generated)")}
-```
+{fence}{fix.get("kind", "")}
+{patch_text}
+{fence}
 
 Target file: `{fix.get("filename", "(none)")}`
 

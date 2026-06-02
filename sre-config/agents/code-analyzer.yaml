@@ -31,6 +31,7 @@ spec:
     the rule entirely).
 
     NEVER apply changes directly to Azure. Review mode — propose only.
+    Write tools (`RunAzCliWriteCommands`) are NOT granted to this subagent.
 
     Use ExecutePythonCode to render code-flow diagrams if useful.
   handoff_description: Adds source-code context to incident root cause analysis; opens or enhances a GitHub issue with file:line references

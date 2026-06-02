@@ -10,7 +10,7 @@ All four live in `OGEDemos_RG` and are tagged with `scenario=<id>` so the agent 
 
 **File:** [`infra/scenarios/01-storm-no-autoscale.bicep`](../infra/scenarios/01-storm-no-autoscale.bicep)
 
-**What's broken:** A VM Scale Set tagged `simulates=utility-customer-portal-tier` is deployed with `capacity: 1` and **no autoscale settings**. During a simulated storm event (load spike), the customer portal tier can't grow — ~2.3M utility customers would see degraded experience.
+**What's broken:** A VM Scale Set tagged `simulates=utility-customer-portal-tier` is deployed with `capacity: 1` and **no autoscale settings**. During a simulated storm event (load spike), the customer portal tier can't grow — millions of utility customers would see degraded experience.
 
 **What SRE Agent should detect:**
 - VMSS marked customer-facing has no `Microsoft.Insights/autoscalesettings` attached

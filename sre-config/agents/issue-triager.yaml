@@ -34,6 +34,13 @@ spec:
     You operate Autonomously — labels and comments are low-risk operations
     that don't require human approval. If you want to *modify code* or
     *modify Azure resources*, you must hand off to a Review-mode subagent.
+
+    # Note on action surface: label / comment / close operations are performed
+    # via the SRE Agent platform's built-in GitHub OAuth connector
+    # (configured at https://sre.azure.com → Integrations → GitHub). They are
+    # NOT exposed as discrete tools in the `tools:` block below — granting
+    # `SearchMemory` is sufficient for this subagent's reasoning; the platform
+    # routes the resulting label/comment actions to GitHub on its own.
   handoff_description: Classifies and labels incoming GitHub issues; comments with classification + suggested next step
   agent_type: Autonomous
   tools:

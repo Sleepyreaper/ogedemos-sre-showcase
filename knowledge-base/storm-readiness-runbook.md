@@ -49,7 +49,7 @@ Multiply two factors:
    ```bash
    az monitor metrics list --resource <vmss-id> \
      --metric "Percentage CPU" \
-     --interval PT1H --offset 14d \
+     --interval PT1H --offset P14D \
      --aggregation Average Maximum
    ```
 

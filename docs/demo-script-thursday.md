@@ -5,7 +5,7 @@
 > 2. **Cloud Weather Ops chat**: https://dteops.ogedemos.com (click "Cloud Weather Operations" tab)
 > 3. **SRE Agent portal**: https://sre.azure.com (have `ogeagenticops` already open)
 > 4. **GitHub issues**: https://github.com/Sleepyreaper/ogedemos-sre-showcase/issues
-> 5. **Backup**: pre-recorded video (`/Users/sleepy/Desktop/demo-backup.mp4` — record day-before)
+> 5. **Backup**: pre-recorded video (`~/demo-backup.mp4` — record day-before)
 
 > **Before going live (T-30 min):**
 > 1. Visit https://dteops.ogedemos.com → wait for first page load (cold-start ~6s)
@@ -21,10 +21,10 @@
 
 ### [0:00 – 0:30] Open with the problem
 
-**Slide:** "A power company in Southern Michigan — 2.3 million customers"
+**Slide:** "A large investor-owned utility — millions of customers, billions of meter reads"
 
 **Say:**
-> "When a storm hits Southern Michigan, the systems that keep the lights on are running on Azure. SCADA, AMI metering for 2.28 million smart meters, the outage management system, the customer portal. These aren't optional. When the portal goes down during a storm, a family who lost power can't even check restoration estimates.
+> "When severe weather hits a utility's service territory, the systems that keep the lights on are running on Azure. SCADA, AMI metering at scale, the outage management system, the customer portal. These aren't optional. When the portal goes down during a storm, a family who lost power can't even check restoration estimates.
 >
 > Today I'm going to show you how we're using **Azure AI Foundry** and the **Azure SRE Agent** to keep that platform running — not by having more engineers, but by giving the engineers we have an agentic team that argues, investigates, and proposes fixes for them."
 
@@ -55,7 +55,7 @@
 **Type into the chat:**
 > `VM SCADA-batch-vm01 is oversized at D16. A storm is forecast for tonight. Cost vs reliability — what do we do?`
 
-**Engage agents:** Cost Sentinel, Standards Architect, Scout (3 agents = ~30s)
+**Engage agents:** Meter Reader, The Lineman, Arc Flash (3 agents = ~30s)
 
 **Say while it streams:**
 > "Watch this. The agents stream in one at a time. **Arc Flash** is the alerting layer — short, terse, severity-tagged. **Meter Reader** is going to show his math. **The Lineman** is going to push back."
@@ -135,7 +135,7 @@
 
 ### Cloud Weather Ops app slow / errors:
 1. **Cut to the pre-recorded backup video** (~3 min of the chat working)
-2. Continue narrative: "Live cloud demos in front of 2000 people, what can possibly go wrong"
+> "Live cloud demos in front of a packed room, what can possibly go wrong"
 3. Recover with: "Here's the same flow we just ran, recorded earlier"
 
 ### SRE Agent shows "Building knowledge graph":
@@ -179,7 +179,7 @@
 ## Talking-point cheat sheet
 
 **The hook:**
-> "2.3 million customers. Storm coming. Six AI specialists arguing about whether to downsize a SCADA VM. Live."
+> "Millions of customers. Storm coming. Six AI specialists arguing about whether to downsize a SCADA VM. Live."
 
 **The differentiator (vs single-agent demos):**
 > "Single agent gives you confident answers. A team of agents that disagree gives you *transparent reasoning*. The disagreement is the proof of work."
@@ -194,7 +194,6 @@
 > "Built on Azure AI Foundry. Models live in our account. Telemetry flows to our Application Insights. Governed by our Azure Policy. Same security posture as everything else they run in Azure."
 
 **The numbers (cite if asked):**
-- Utility: ~2.3 million customers · 2.28M smart meters
 - Cloud Weather Ops: ~$0.06-0.12 per crew query · ~$0.15-0.75/day total
 - Microsoft SRE Agent internal: 1,300+ agents · 35,000+ incidents mitigated · 20,000+ engineering hours saved
 - Microsoft App Service time-to-mitigate: 40.5 hours → 3 minutes (per the post-GA blog)

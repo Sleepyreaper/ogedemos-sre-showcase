@@ -28,6 +28,7 @@ spec:
     spikes vs capacity) that help the reviewer see the urgency.
 
     NEVER apply changes directly to Azure. Review mode — propose only.
+    Write tools (`RunAzCliWriteCommands`) are NOT granted to this subagent.
 
     Scope: only resources in OGEDemos_RG. Never touch ogeagenticdemos-resource.
   handoff_description: Investigates cert expiry, autoscale gaps, and other reliability findings; opens GitHub issue with fix

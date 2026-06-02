@@ -14,7 +14,9 @@ fi
 echo "→ Seeding $KV_NAME with near-expiry self-signed cert 'near-expiry-cert'..."
 
 # Build a policy with 30-day validity, so the cert is "near-expiry" from day 1.
-cat > /tmp/cert-policy.json <<'EOF'
+POLICY=$(mktemp -t cert-policy.XXXXXX.json) || { echo "✗ mktemp failed"; exit 1; }
+trap 'rm -f "$POLICY"' EXIT
+cat > "$POLICY" <<'EOF'
 {
   "issuerParameters": { "name": "Self" },
   "x509CertificateProperties": {
@@ -36,7 +38,7 @@ EOF
 az keyvault certificate create \
   --vault-name "$KV_NAME" \
   --name "near-expiry-cert" \
-  --policy @/tmp/cert-policy.json \
+  --policy "@$POLICY" \
   --query "{name:name, expires:attributes.expires, status:status}" -o table
 
 echo "✓ Done. The cert expires in ~30 days and has no rotation policy attached."

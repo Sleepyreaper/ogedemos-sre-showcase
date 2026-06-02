@@ -101,7 +101,12 @@ Lets the SRE Agent correlate companion-app failures with infrastructure events. 
 
 ```bash
 SUB=$(az account show --query id -o tsv)
-UAMI_PRINCIPAL="eaf1883b-b217-4d3d-805f-3da4e1b03159"   # ogeagenticops-etpaql446bpno principalId
+# Resolve the agent's UAMI principalId dynamically — never pin it as a literal,
+# because re-creating ogeagenticops produces a new UAMI guid.
+IDENTITY_ID=$(az resource show -g OGEDemos_RG -n ogeagenticops \
+  --resource-type Microsoft.App/agents --api-version 2025-05-01-preview \
+  --query "properties.knowledgeGraphConfiguration.identity" -o tsv)
+UAMI_PRINCIPAL=$(az identity show --ids "$IDENTITY_ID" --query principalId -o tsv)
 CWO_RG_ID="/subscriptions/$SUB/resourceGroups/CWO_RG"
 
 for ROLE in "Reader" "Monitoring Reader" "Log Analytics Reader"; do
@@ -127,12 +132,23 @@ az rest --method PUT \
 Verify via `bash scripts/check-sre-agent.sh` or:
 
 ```bash
-curl -sS "https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai/api/v2/extendedAgent/connectors/dteops-log/status" \
+AGENT_ENDPOINT=$(az resource show -g OGEDemos_RG -n ogeagenticops \
+  --resource-type Microsoft.App/agents --api-version 2025-05-01-preview \
+  --query "properties.agentEndpoint" -o tsv)
+curl -sS "${AGENT_ENDPOINT}/api/v2/extendedAgent/connectors/dteops-log/status" \
   -H "Authorization: Bearer $(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)"
 # Expected: "status":"Connected", "healthy":true, "message":"Connected via managed identity."
 ```
 
-> The agent will detect that `AzureActivity` table on `dteops-log` is empty unless the subscription-scope Activity Log diagnostic setting is configured. See `../CloudWeatherOperations/docs/telemetry-guide.md` §3.2 for the one-time fix.
+> The agent will detect that `AzureActivity` table on `dteops-log` is empty unless the subscription-scope Activity Log diagnostic setting is configured. One-time fix:
+>
+> ```bash
+> az monitor diagnostic-settings subscription create \
+>   --name "send-activity-to-cwo-law" \
+>   --location eastus2 \
+>   --workspace "$CWO_LAW" \
+>   --logs '[{"category":"Administrative","enabled":true},{"category":"Alert","enabled":true},{"category":"ResourceHealth","enabled":true},{"category":"ServiceHealth","enabled":true},{"category":"Policy","enabled":true}]'
+> ```
 
 ### 6. Configure Workload Identity Federation (for the Foundry-direct workflow)
 
@@ -144,11 +160,13 @@ TENANT=$(az account show --query tenantId -o tsv)
 APP_ID=$(az ad app create --display-name "ogedemos-sre-showcase-github" --query appId -o tsv)
 SP_ID=$(az ad sp create --id "$APP_ID" --query id -o tsv)
 
-# Federated credential for main branch + PR builds + triage branches
+# Federated credentials for main + PR builds. The triage workflow runs ON
+# main (triggered by `issues` events) and pushes to triage/* branches, so
+# the main subject covers it — no separate `triage/*` credential needed
+# (wildcards in `subject` are rejected by the federated-credential API).
 for SUBJECT in \
   "repo:Sleepyreaper/ogedemos-sre-showcase:ref:refs/heads/main" \
-  "repo:Sleepyreaper/ogedemos-sre-showcase:pull_request" \
-  "repo:Sleepyreaper/ogedemos-sre-showcase:ref:refs/heads/triage/*"; do
+  "repo:Sleepyreaper/ogedemos-sre-showcase:pull_request"; do
   az ad app federated-credential create --id "$APP_ID" --parameters "{
     \"name\": \"$(echo $SUBJECT | tr ':/' '--' | tr '*' 'x' | head -c 64)\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
@@ -267,9 +285,9 @@ curl -s "${ENDPOINT}/api/v1/AgentMemory/files" -H "Authorization: Bearer ${TOKEN
 
 The federated credential subject must EXACTLY match the workflow's OIDC token. Common mismatches:
 - Workflow runs on a PR → subject is `pull_request`, not `ref:refs/heads/<branch>`
-- Workflow runs from a `triage/issue-N` branch → subject is `ref:refs/heads/triage/*`
+- Workflow runs from the default branch via an `issues` event → subject is `ref:refs/heads/main` (issues events run from the default branch, not from the branch the workflow pushes to)
 
-Verify and add federated credentials accordingly (see bootstrap step 5).
+Verify and add federated credentials accordingly (see bootstrap step 5). Note that wildcard subjects (e.g. `ref:refs/heads/triage/*`) are not accepted by the federated-credential API; use one credential per literal subject.
 
 ### Triage workflow's "Open draft PR" step fails with "GitHub Actions is not permitted to create or approve pull requests"
 
@@ -281,7 +299,7 @@ gh api -X PUT /repos/Sleepyreaper/ogedemos-sre-showcase/actions/permissions/work
 
 ### Subagent rejects temperature parameter
 
-Reasoning models (`o3`, `o3-pro`, `o4-mini`, `gpt-5.4-pro`) only support default temperature. For the Foundry-direct agent in `agents/triage/`, the runner skips temperature for the deployments listed in `reasoning_models`. If you add a new reasoning model, append its deployment name there.
+Reasoning models (`o1*`, `o3*`, `o4*`, `gpt-5-pro`, `gpt-5.4-pro`) only support default temperature and require role=`developer` instead of `system`. The Foundry-direct agent in `agents/triage/main.py` detects these by deployment-name prefix via the `REASONING_MODEL_PREFIXES` constant; if you add a new reasoning model, append its lowercase deployment-name prefix to that tuple.
 
 ### Bicep deployment hits "InternalSubscriptionIsOverQuotaForSku"
 

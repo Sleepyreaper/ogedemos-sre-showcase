@@ -41,13 +41,23 @@ az resource show --resource-type "Microsoft.App/agents" --name "$AGENT_NAME" -g 
 
 echo
 echo "→ UAMI permissions on $RG:"
-UAMI_PRINCIPAL=$(az resource show --resource-type "Microsoft.App/agents" --name "$AGENT_NAME" -g "$RG" --api-version "$API_VERSION" --query "properties.knowledgeGraphConfiguration.identity" -o tsv | xargs -I {} az resource show --ids {} --query "properties.principalId" -o tsv)
-RG_LOWER=$(echo "$RG" | tr '[:upper:]' '[:lower:]')
-RG_UPPER=$(echo "$RG" | tr '[:lower:]' '[:upper:]')
-# JMESPath has no case-insensitive contains; just OR both cases.
-az role assignment list --assignee "$UAMI_PRINCIPAL" --all -o tsv \
-  --query "[?contains(scope, '$RG') || contains(scope, '$RG_LOWER') || contains(scope, '$RG_UPPER')].roleDefinitionName" \
-  | sort -u | sed 's/^/   - /'
+IDENTITY_ID=$(az resource show --resource-type "Microsoft.App/agents" --name "$AGENT_NAME" -g "$RG" \
+  --api-version "$API_VERSION" --query "properties.knowledgeGraphConfiguration.identity" -o tsv 2>/dev/null || true)
+if [ -z "$IDENTITY_ID" ]; then
+  echo "   (✗ no knowledgeGraphConfiguration.identity on agent — cannot enumerate roles)"
+  UAMI_PRINCIPAL=""
+else
+  UAMI_PRINCIPAL=$(az identity show --ids "$IDENTITY_ID" --query principalId -o tsv 2>/dev/null || true)
+fi
+if [ -n "$UAMI_PRINCIPAL" ]; then
+  # Filter client-side, case-insensitive, instead of brittle JMESPath OR-three.
+  az role assignment list --assignee "$UAMI_PRINCIPAL" --all \
+    --query "[].{r:roleDefinitionName,s:scope}" -o tsv 2>/dev/null \
+    | awk -v rg="$RG" 'BEGIN{IGNORECASE=1} index(tolower($0), tolower(rg)) {print "   - " $1}' \
+    | sort -u
+else
+  echo "   (✗ could not resolve principalId for $IDENTITY_ID)"
+fi
 
 echo
 echo "─── Bridge to GitHub ─────────────────────────────────────"

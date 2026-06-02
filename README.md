@@ -9,7 +9,7 @@
 | 🤖 **SRE Agent** (managed portal) | https://sre.azure.com |
 | 🌐 **Cloud Weather Ops** (custom Foundry app) | https://dteops.ogedemos.com |
 | 📦 **This repo** | https://github.com/Sleepyreaper/ogedemos-sre-showcase |
-| 🔍 **Agent endpoint** | https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai |
+| 🔍 **Agent endpoint** | `https://<your-agent>.<region>.azuresre.ai` (resolved at runtime via `az resource show --query properties.agentEndpoint`) |
 
 ## Architecture (Microsoft-native pattern)
 

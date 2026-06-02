@@ -73,7 +73,7 @@ echo "→ Endpoint: $AGENT_ENDPOINT"
 if [ -z "$AGENTS_ONLY" ]; then
   echo
   echo "─── Step 1: Uploading knowledge base ──────────────────────"
-  DATA_TOKEN=$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)
+  DATA_TOKEN=$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv 2>/dev/null || true)
   if [ -z "$DATA_TOKEN" ]; then
     echo "✗ Could not get data-plane access token for azuresre.dev."
     echo "  Run: az login"
@@ -83,17 +83,16 @@ if [ -z "$AGENTS_ONLY" ]; then
   for md in knowledge-base/*.md; do
     name=$(basename "$md")
     echo -n "  ↳ $name ... "
-    RESP=$(curl -sS -X POST "${AGENT_ENDPOINT}/api/v1/AgentMemory/upload" \
+    HTTP_CODE=$(curl -sS -X POST "${AGENT_ENDPOINT}/api/v1/AgentMemory/upload" \
       -H "Authorization: Bearer ${DATA_TOKEN}" \
       -F "triggerIndexing=true" \
-      -F "files=@${md};type=text/markdown" 2>&1)
-    if echo "$RESP" | grep -q "uploaded successfully"; then
-      echo "uploaded"
-    elif echo "$RESP" | grep -qi "error\|fail"; then
-      echo "FAILED"
-      echo "    $RESP" | head -3
+      -F "files=@${md};type=text/markdown" \
+      -o /tmp/oge-upload-resp.json -w '%{http_code}' 2>/dev/null || echo "000")
+    if [[ "$HTTP_CODE" =~ ^2[0-9][0-9]$ ]]; then
+      echo "uploaded (HTTP $HTTP_CODE)"
     else
-      echo "ok"
+      echo "FAILED (HTTP $HTTP_CODE)"
+      head -c 300 /tmp/oge-upload-resp.json 2>/dev/null; echo
     fi
     # Indexing can race when many files upload in quick succession;
     # sleep between uploads to give the indexer headroom.
@@ -170,7 +169,8 @@ fi
 if [ -z "$KB_ONLY" ] && [ -z "$AGENTS_ONLY" ]; then
   echo
   echo "─── Step 3: Register repo as a CodeRepo ────────────────────"
-  DATA_TOKEN="${DATA_TOKEN:-$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv)}"
+  DATA_TOKEN="${DATA_TOKEN:-$(az account get-access-token --resource https://azuresre.dev --query accessToken -o tsv 2>/dev/null || true)}"
+  [ -n "$DATA_TOKEN" ] || { echo "✗ Could not get data-plane access token for azuresre.dev. Run: az login"; exit 1; }
 
   # Clean up any deprecated GitHubOAuth connector left over from previous runs
   if az rest --method GET \
@@ -226,10 +226,12 @@ if echo "$@" | grep -q -- --with-cwo; then
   CWO_APPI="/subscriptions/${SUB}/resourceGroups/CWO_RG/providers/microsoft.insights/components/dteops-appi"
   CWO_LAW="/subscriptions/${SUB}/resourceGroups/CWO_RG/providers/Microsoft.OperationalInsights/workspaces/dteops-log"
 
-  # Grant UAMI roles on CWO_RG (idempotent — Azure returns 200 if assignment exists)
-  UAMI_PRINCIPAL=$(az resource show --resource-type "Microsoft.App/agents" --name "$AGENT_NAME" -g "$RG" \
-    --api-version "$API_VERSION" --query "properties.knowledgeGraphConfiguration.identity" -o tsv | \
-    xargs -I {} az resource show --ids {} --query "properties.principalId" -o tsv)
+  # Resolve UAMI principalId, bailing loud if any link in the chain is missing.
+  IDENTITY_ID=$(az resource show --resource-type "Microsoft.App/agents" --name "$AGENT_NAME" -g "$RG" \
+    --api-version "$API_VERSION" --query "properties.knowledgeGraphConfiguration.identity" -o tsv 2>/dev/null || true)
+  [ -n "$IDENTITY_ID" ] || { echo "✗ Agent has no knowledgeGraphConfiguration.identity — cannot grant CWO roles"; exit 1; }
+  UAMI_PRINCIPAL=$(az identity show --ids "$IDENTITY_ID" --query principalId -o tsv 2>/dev/null || true)
+  [ -n "$UAMI_PRINCIPAL" ] || { echo "✗ Could not resolve principalId from $IDENTITY_ID"; exit 1; }
   CWO_RG_ID="/subscriptions/${SUB}/resourceGroups/CWO_RG"
   for ROLE in "Reader" "Monitoring Reader" "Log Analytics Reader"; do
     echo -n "  ↳ Grant '$ROLE' on CWO_RG ... "

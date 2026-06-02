@@ -8,12 +8,16 @@ on:
     branches: [main]
     paths:
       - 'infra/scenarios/**'
-      - 'agents/**'
 
 permissions:
   contents: read
   issues: write
   id-token: write
+
+# Serialize: never run two deploys against OGEDemos_RG in parallel.
+concurrency:
+  group: deploy-ogedemos
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,6 +26,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need HEAD~1 for the change detection below
 
       - name: Azure login (Workload Identity Federation)
         uses: azure/login@v2
@@ -32,31 +38,52 @@ jobs:
 
       - name: Detect changed scenarios
         id: changes
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA:  ${{ github.sha }}
         run: |
-          CHANGED=$(git diff --name-only HEAD^ HEAD | grep '^infra/scenarios/.*\.bicep$' || true)
-          echo "files=$CHANGED" >> $GITHUB_OUTPUT
+          # Empty/zero before-sha (first push, force-push, etc.) → fall back to HEAD~1
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="${AFTER_SHA}~1"
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" -- 'infra/scenarios/*.bicep' || true)
           echo "Changed scenarios:"
-          echo "$CHANGED"
+          printf '%s\n' "$CHANGED" | sed 's/^/  • /'
+          {
+            echo 'files<<__EOF__'
+            printf '%s\n' "$CHANGED"
+            echo '__EOF__'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Redeploy changed scenarios
         if: steps.changes.outputs.files != ''
+        env:
+          CHANGED_FILES: ${{ steps.changes.outputs.files }}
         run: |
-          for file in ${{ steps.changes.outputs.files }}; do
-            name="deploy-$(basename $file .bicep)-$(date +%s)"
+          # Iterate safely: filenames pass through env, never template interpolation.
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            name="deploy-$(basename "$file" .bicep)-$(date +%s)"
             echo "→ Deploying $file as $name"
             az deployment group create \
               -g OGEDemos_RG \
               --name "$name" \
               --template-file "$file" \
               --query "properties.provisioningState" -o tsv
-          done
+          done <<<"$CHANGED_FILES"
 
       - name: Close linked issues
         env:
           GH_TOKEN: ${{ github.token }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA:  ${{ github.sha }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          # Find issues referenced in the merged commit messages and close them
-          COMMITS=$(git log HEAD^..HEAD --pretty=%B)
-          for num in $(echo "$COMMITS" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
-            gh issue close "$num" --comment "Fix deployed to OGEDemos_RG by ${{ github.workflow }} run ${{ github.run_id }}." || true
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="${AFTER_SHA}~1"
+          fi
+          COMMITS=$(git log "$BEFORE_SHA".."$AFTER_SHA" --pretty=%B)
+          for num in $(printf '%s' "$COMMITS" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
+            gh issue close "$num" --comment "Fix deployed to OGEDemos_RG by ${WORKFLOW_NAME} run ${RUN_ID}." || true
           done

@@ -28,8 +28,9 @@ spec:
     graphs that help the human reviewer understand the issue at a glance.
 
     NEVER apply changes directly to Azure. You operate in Review mode —
-    propose only, never execute. Even if you have `RunAzCliWriteCommands`,
-    do not use it without explicit human request.
+    propose only, never execute. Write tools (`RunAzCliWriteCommands`) are
+    NOT granted to this subagent; remediation always handed off via the
+    GitHub issue / PR review path.
 
     Scope: only resources in OGEDemos_RG. Never touch ogeagenticdemos-resource
     or anything outside that resource group.

@@ -4,7 +4,7 @@
 
 ## Operational context
 
-`OGEDemos_RG` is a demo / showcase environment in subscription `b1672fa6-8e52-45d0-bf79-ceccc352177d` (region `eastus2`). It deliberately contains broken-on-purpose resources so the Azure SRE Agent can demonstrate end-to-end agentic operations:
+`OGEDemos_RG` is a demo / showcase environment in the OGEDemos subscription (region `eastus2`). It deliberately contains broken-on-purpose resources so the Azure SRE Agent can demonstrate end-to-end agentic operations:
 
 - **detection** (SRE Agent's own knowledge graph + Azure Monitor signals)
 - **triage** (custom subagents using runbooks in this knowledge base)
