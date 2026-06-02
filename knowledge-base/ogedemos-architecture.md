@@ -21,7 +21,7 @@ Every demo resource carries these tags:
 | `scenario` | One of: `storm-no-autoscale`, `security-open-ssh`, `cost-orphaned-resources`, `reliability-cert-expiry` |
 | `support-owner` | Email of the team that owns the resource (always `demo-team@ogedemos.com` here) |
 | `expected-finding` | What this resource is supposed to demonstrate when broken |
-| `simulates` | What real-world infrastructure pattern this represents in DTE's environment |
+| `simulates` | What real-world infrastructure pattern this represents in a utility's environment |
 
 When investigating, **always read the tags first** — they tell you what the resource is supposed to demonstrate. If `expected-finding` matches your independent assessment, you're on the right track.
 
@@ -29,15 +29,15 @@ When investigating, **always read the tags first** — they tell you what the re
 
 | Resource | Type | Scenario | Notes |
 |---|---|---|---|
-| `ogedemo-storm-vmss` | `Microsoft.Compute/virtualMachineScaleSets` | storm | No autoscale settings; capacity locked at 1. Simulates DTE customer-portal tier. |
+| `ogedemo-storm-vmss` | `Microsoft.Compute/virtualMachineScaleSets` | storm | No autoscale settings; capacity locked at 1. Simulates a utility customer-portal tier. |
 | `ogedemo-storm-vnet` | `Microsoft.Network/virtualNetworks` | storm | Hosts the VMSS subnet. |
 | `ogedemo-security-nsg` | `Microsoft.Network/networkSecurityGroups` | security | Has Allow inbound for ports 22 and 3389 from `0.0.0.0/0`. |
 | `ogedemo-cost-orphan-disk` | `Microsoft.Compute/disks` | cost | 1 TB Premium SSD, unattached. ~$135/month wasted. |
 | `ogedemo-cost-orphan-pip` | `Microsoft.Network/publicIPAddresses` | cost | Standard SKU static IP, no association. |
 | `ogekv...` (random suffix) | `Microsoft.KeyVault/vaults` | reliability | Contains `near-expiry-cert` (30-day validity, no rotation policy). |
-| `ogeagenticdemos-resource` | `Microsoft.CognitiveServices/accounts` | (production) | Azure AI Foundry project that hosts agents for the DTE Cloud Weather Ops app. **Do not break this.** |
+| `ogeagenticdemos-resource` | `Microsoft.CognitiveServices/accounts` | (production) | Azure AI Foundry project that hosts agents for the Cloud Weather Ops app. **Do not break this.** |
 
-## Companion app: DTE Cloud Weather Ops
+## Companion app: Cloud Weather Ops
 
 A separate Flask app at `https://dteops.ogedemos.com` runs an interactive multi-agent debate UI on top of the same Foundry account (`ogeagenticdemos-resource`). It is **not** a target for SRE Agent action — it is a sibling system that demonstrates a different agentic pattern (synchronous chat with a 6-agent council).
 

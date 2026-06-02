@@ -33,7 +33,7 @@
 **Click:** Open https://dteops.ogedemos.com (Reliability tab loads by default)
 
 **Say:**
-> "This is what an SRE in the utility's cloud ops team sees first thing on Monday morning. It's an executive reliability dashboard — score out of 100, four pillars: Security, Governance, Resilience, Cost. All of it backed by **real Azure Resource Graph** and **Service Health** queries — no canned data."
+> "This is what an SRE on a utility cloud-ops team sees first thing on Monday morning. It's an executive reliability dashboard — score out of 100, four pillars: Security, Governance, Resilience, Cost. All of it backed by **real Azure Resource Graph** and **Service Health** queries — no canned data."
 
 **Click:** Briefly hover the score ring and pillar bars
 

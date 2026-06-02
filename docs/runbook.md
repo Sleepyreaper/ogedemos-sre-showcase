@@ -33,7 +33,7 @@ This runbook walks operators through both patterns demonstrated in this repo: **
 8. .github/workflows/deploy.yml redeploys
 ```
 
-Both write to the same repo and respect the same human-approval gate. The DTE Cloud Weather Ops at https://dteops.ogedemos.com runs on the **Foundry-direct** pattern and demonstrates the 6-agent debate experience.
+Both write to the same repo and respect the same human-approval gate. The Cloud Weather Ops at https://dteops.ogedemos.com runs on the **Foundry-direct** pattern and demonstrates the 6-agent debate experience.
 
 ---
 
@@ -95,33 +95,33 @@ This works after you've completed the one-time portal GitHub sign-in. The repo c
 
 > **Note:** The legacy `GitHubOAuth` *connector* type is deprecated — modern SRE Agent doesn't use per-connector tokens. User-level OAuth (signed in at the portal) covers all repos you register.
 
-### 5. Wire DTE Cloud Weather Ops telemetry into the agent (optional but recommended)
+### 5. Wire Cloud Weather Ops telemetry into the agent (optional but recommended)
 
-Lets the SRE Agent correlate DTE app failures with infrastructure events. The agent's UAMI needs read on `DTE_RG`:
+Lets the SRE Agent correlate companion-app failures with infrastructure events. The agent's UAMI needs read on `CWO_RG`:
 
 ```bash
 SUB=$(az account show --query id -o tsv)
 UAMI_PRINCIPAL="eaf1883b-b217-4d3d-805f-3da4e1b03159"   # ogeagenticops-etpaql446bpno principalId
-DTE_RG_ID="/subscriptions/$SUB/resourceGroups/DTE_RG"
+CWO_RG_ID="/subscriptions/$SUB/resourceGroups/CWO_RG"
 
 for ROLE in "Reader" "Monitoring Reader" "Log Analytics Reader"; do
   az role assignment create --assignee-object-id "$UAMI_PRINCIPAL" \
     --assignee-principal-type ServicePrincipal \
-    --role "$ROLE" --scope "$DTE_RG_ID"
+    --role "$ROLE" --scope "$CWO_RG_ID"
 done
 
 # Add connectors on ogeagenticops
 AGENT_ID="/subscriptions/$SUB/resourceGroups/OGEDemos_RG/providers/Microsoft.App/agents/ogeagenticops"
-DTE_APPI="/subscriptions/$SUB/resourceGroups/DTE_RG/providers/microsoft.insights/components/dteops-appi"
-DTE_LAW="/subscriptions/$SUB/resourceGroups/DTE_RG/providers/Microsoft.OperationalInsights/workspaces/dteops-log"
+CWO_APPI="/subscriptions/$SUB/resourceGroups/CWO_RG/providers/microsoft.insights/components/dteops-appi"
+CWO_LAW="/subscriptions/$SUB/resourceGroups/CWO_RG/providers/Microsoft.OperationalInsights/workspaces/dteops-log"
 
 az rest --method PUT \
   --url "https://management.azure.com${AGENT_ID}/DataConnectors/dteops-appi?api-version=2025-05-01-preview" \
-  --body "{\"properties\":{\"dataConnectorType\":\"AppInsights\",\"dataSource\":\"${DTE_APPI}\"}}"
+  --body "{\"properties\":{\"dataConnectorType\":\"AppInsights\",\"dataSource\":\"${CWO_APPI}\"}}"
 
 az rest --method PUT \
   --url "https://management.azure.com${AGENT_ID}/DataConnectors/dteops-log?api-version=2025-05-01-preview" \
-  --body "{\"properties\":{\"dataConnectorType\":\"LogAnalytics\",\"dataSource\":\"${DTE_LAW}\"}}"
+  --body "{\"properties\":{\"dataConnectorType\":\"LogAnalytics\",\"dataSource\":\"${CWO_LAW}\"}}"
 ```
 
 Verify via `bash scripts/check-sre-agent.sh` or:
@@ -132,7 +132,7 @@ curl -sS "https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai/api/v2/ex
 # Expected: "status":"Connected", "healthy":true, "message":"Connected via managed identity."
 ```
 
-> The agent will detect that `AzureActivity` table on `dteops-log` is empty unless the subscription-scope Activity Log diagnostic setting is configured. See `../DTECloudWeatherOperations/docs/telemetry-guide.md` §3.2 for the one-time fix.
+> The agent will detect that `AzureActivity` table on `dteops-log` is empty unless the subscription-scope Activity Log diagnostic setting is configured. See `../CloudWeatherOperations/docs/telemetry-guide.md` §3.2 for the one-time fix.
 
 ### 6. Configure Workload Identity Federation (for the Foundry-direct workflow)
 
@@ -168,7 +168,7 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
   --role "Reader" --scope "/subscriptions/$SUB"
 
 # GitHub secrets
-APPI=$(az monitor app-insights component show -g DTE_RG -a dteops-appi --query connectionString -o tsv)
+APPI=$(az monitor app-insights component show -g CWO_RG -a dteops-appi --query connectionString -o tsv)
 gh secret set AZURE_CLIENT_ID --body "$APP_ID"
 gh secret set AZURE_TENANT_ID --body "$TENANT"
 gh secret set AZURE_SUBSCRIPTION_ID --body "$SUB"
@@ -294,7 +294,7 @@ The cost scenario originally used a P0v3 / B1 App Service Plan; both are zero-qu
 This showcase demonstrates **agentic IT-ops in three styles**, all running on the same Azure AI Foundry account (`ogeagenticdemos-resource`):
 
 1. **Microsoft's managed SRE Agent** with curated knowledge base and custom subagents — operational intelligence delivered through `https://sre.azure.com`.
-2. **Custom Foundry-direct agent** with bespoke orchestration — full code control, useful for non-SRE patterns like the DTE Cloud Weather Ops debate experience.
+2. **Custom Foundry-direct agent** with bespoke orchestration — full code control, useful for non-SRE patterns like the Cloud Weather Ops debate experience.
 3. **GitHub-mediated human-in-the-loop** — every change goes through PR review + CODEOWNERS gate before deployment. No agent writes to Azure directly.
 
 Combining these patterns gives customers a roadmap: start with the managed agent for general operational toil, add custom Foundry agents for domain-specific workflows, and use GitHub as the audit trail and approval surface for both.

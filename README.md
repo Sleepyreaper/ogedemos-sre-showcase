@@ -1,4 +1,4 @@
-# OGE Demos — Azure SRE Agent + DTE Agentic Ops Showcase
+# OGE Demos — Azure SRE Agent + Agentic Ops Showcase
 
 > **End-to-end agentic IT-ops on Azure.** Microsoft's official **Azure SRE Agent** (`ogeagenticops`) watches `OGEDemos_RG`, uses custom subagents and a curated knowledge base, files GitHub issues with proposed fixes, and gates every change behind human PR review.
 
@@ -7,7 +7,7 @@
 | What | Where |
 |---|---|
 | 🤖 **SRE Agent** (managed portal) | https://sre.azure.com |
-| 🌐 **DTE Cloud Weather Ops** (custom Foundry app) | https://dteops.ogedemos.com |
+| 🌐 **Cloud Weather Ops** (custom Foundry app) | https://dteops.ogedemos.com |
 | 📦 **This repo** | https://github.com/Sleepyreaper/ogedemos-sre-showcase |
 | 🔍 **Agent endpoint** | https://ogeagenticops--698f97bb.de5105f9.eastus2.azuresre.ai |
 
@@ -44,11 +44,11 @@
    │      │                                                    │          │
    │      │  Data Connectors:                                  │          │
    │      │   • OGEAgentAppInsight  (agent's own telemetry)    │          │
-   │      │   • dteops-appi          (DTE Cloud Weather Ops)   │          │
-   │      │   • dteops-log           (DTE Log Analytics)       │          │
+   │      │   • dteops-appi          (Cloud Weather Ops)   │          │
+   │      │   • dteops-log           (Cloud Weather Ops Log Analytics) │          │
    │      │                                                    │          │
    │      │  CodeRepos (cloned + indexed):                     │          │
-   │      │   • ogedemos-sre-showcase    DTECloudWeatherOps    │          │
+   │      │   • ogedemos-sre-showcase    CloudWeatherOps    │          │
    │      │   • OGEAgenticITOperations   P66-Ops-Council       │          │
    │      │   • PPLAUTO                  ZeroDownTimeDevOps    │          │
    │      └────────────────────────┬───────────────────────────┘          │
@@ -120,7 +120,7 @@ This repo deliberately shows **both** common agentic-ops patterns side-by-side:
 | Pattern | Where | When to choose |
 |---|---|---|
 | **SRE-Agent-native** | `ogeagenticops` + this repo's `knowledge-base/` + `sre-config/` | Use Microsoft's managed agent platform; minimal custom code; leverages built-in tools (Azure CLI, Log Analytics, App Insights, code interpreter); deep GitHub + Teams integration |
-| **Foundry-direct** | `agents/triage/` + `.github/workflows/issue-triage.yml` | Use raw Azure OpenAI / Foundry models in your own runtime when you need full control over the orchestration loop, debate dynamics, or non-SRE workloads. This is what powers the DTE Cloud Weather Ops at https://dteops.ogedemos.com |
+| **Foundry-direct** | `agents/triage/` + `.github/workflows/issue-triage.yml` | Use raw Azure OpenAI / Foundry models in your own runtime when you need full control over the orchestration loop, debate dynamics, or non-SRE workloads. This is what powers the Cloud Weather Ops at https://dteops.ogedemos.com |
 
 Both write to the same GitHub repo, both use Azure AI Foundry (`ogeagenticdemos-resource`) for the underlying models, both gate every change behind human PR review.
 
@@ -146,11 +146,11 @@ Full per-scenario detail in [`docs/scenarios.md`](docs/scenarios.md).
 | Knowledge base (7 runbooks) | ✅ uploaded + indexed on `ogeagenticops` |
 | Custom subagents (YAML) | ⚠️ specs ready in `sre-config/agents/`; apply via portal (tenant-gated for API) |
 | GitHub repo registered as CodeRepo on agent | ✅ `ogedemos-sre-showcase` cloneStatus=Ready alongside 5 other repos |
-| DTE Cloud Weather Ops connectors (LAW + App Insights) | ✅ `dteops-log` + `dteops-appi` wired to `ogeagenticops`, query-verified live |
+| Cloud Weather Ops connectors (LAW + App Insights) | ✅ `dteops-log` + `dteops-appi` wired to `ogeagenticops`, query-verified live |
 | End-to-end SRE Agent investigation → GitHub issue | ✅ Issue [#3](https://github.com/Sleepyreaper/ogedemos-sre-showcase/issues/3) filed autonomously by the agent (read runbook, investigated, grep'd repo, classified drift, proposed Bicep fix) |
 | Triage workflow (Foundry-direct alternative) | ✅ end-to-end verified (issue #1 → PR #2) |
 | Workload Identity Federation | ✅ |
-| DTE Cloud Weather Ops (sibling app) | ✅ live at dteops.ogedemos.com |
+| Cloud Weather Ops (sibling app) | ✅ live at dteops.ogedemos.com |
 
 ## See also
 

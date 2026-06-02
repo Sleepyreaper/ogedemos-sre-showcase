@@ -1,7 +1,7 @@
 // ─── Scenario 2: Security Drift ──────────────────────────────────
 // An NSG with an inbound rule allowing SSH from 0.0.0.0/0.
 // Classic "Do Something Stupid" pattern — equivalent to the chaos
-// demo in the DTE Cloud Weather Ops app, but persistent so the SRE
+// demo in the Cloud Weather Ops app, but persistent so the SRE
 // Agent has a stable finding to discover.
 
 @description('Prefix for scenario resources.')

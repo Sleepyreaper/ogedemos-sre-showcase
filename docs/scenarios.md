@@ -10,7 +10,7 @@ All four live in `OGEDemos_RG` and are tagged with `scenario=<id>` so the agent 
 
 **File:** [`infra/scenarios/01-storm-no-autoscale.bicep`](../infra/scenarios/01-storm-no-autoscale.bicep)
 
-**What's broken:** A VM Scale Set tagged `simulates=dte-customer-portal-tier` is deployed with `capacity: 1` and **no autoscale settings**. During a simulated storm event (load spike), the customer portal tier can't grow — DTE's 2.3M customers would see degraded experience.
+**What's broken:** A VM Scale Set tagged `simulates=utility-customer-portal-tier` is deployed with `capacity: 1` and **no autoscale settings**. During a simulated storm event (load spike), the customer portal tier can't grow — ~2.3M utility customers would see degraded experience.
 
 **What SRE Agent should detect:**
 - VMSS marked customer-facing has no `Microsoft.Insights/autoscalesettings` attached
@@ -82,9 +82,9 @@ Every scenario resource carries these tags:
 | Tag | Value | Purpose |
 |---|---|---|
 | `scenario` | `storm-no-autoscale` / `security-open-ssh` / `cost-orphaned-resources` / `reliability-cert-expiry` | Correlate findings to source files |
-| `support-owner` | `demo-team@ogedemos.com` | Who to notify (demonstrates the support-owner pattern from DTE) |
+| `support-owner` | `demo-team@ogedemos.com` | Who to notify (demonstrates the support-owner pattern from a real utility deployment) |
 | `expected-finding` | Short string | What SRE Agent should report |
-| `simulates` | What real DTE infrastructure pattern this represents | Demo storytelling |
+| `simulates` | What real utility infrastructure pattern this represents | Demo storytelling |
 
 The triage agent uses these tags as additional context when proposing fixes — it reads `expected-finding` to sanity-check that the issue's reported problem matches the resource's intended demo behavior.
 

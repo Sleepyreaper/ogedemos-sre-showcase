@@ -23,7 +23,7 @@ Curated links Microsoft maintains for the Azure SRE Agent product. Use these to 
 | Response plans | https://sre.azure.com/docs/capabilities/incident-response-plans | (planned) routes alerts → subagents |
 | Connectors | https://sre.azure.com/docs/concepts/connectors | GitHub OAuth + Azure Monitor + LAW + App Insights |
 | Memory & knowledge | https://sre.azure.com/docs/concepts/memory | `knowledge-base/*.md` uploaded via data plane |
-| Skills (MCP) | https://sre.azure.com/docs/concepts/skills | (planned) MCP extensions for DTE-specific tools |
+| Skills (MCP) | https://sre.azure.com/docs/concepts/skills | (planned) MCP extensions for utility-specific tools |
 | Incident platforms | https://sre.azure.com/docs/concepts/incident-platforms | AzMonitor (already wired on ogeagenticops) |
 | Permissions | https://sre.azure.com/docs/tutorials/agent-config/manage-permissions | UAMI roles documented in `docs/runbook.md` |
 
@@ -34,16 +34,16 @@ These are patterns Microsoft has published that we could add as future demos in 
 | Blog post | Idea for this showcase |
 |---|---|
 | [Event-Driven IaC Operations: Terraform Drift Detection via HTTP Triggers](https://techcommunity.microsoft.com/blog/appsonazureblog/event-driven-iac-operations-with-azure-sre-agent-terraform-drift-detection-via-h/4512233) | Add a 5th scenario: a Terraform drift detector that triggers `ogeagenticops` when a `terraform plan` diff appears |
-| [Multi-Tenant Azure Resources with SRE Agent and Lighthouse](https://techcommunity.microsoft.com/blog/appsonazureblog/managing-multi%E2%80%91tenant-azure-resource-with-sre-agent-and-lighthouse/4511789) | Add an OGEDemos sub-tenant via Lighthouse so the agent monitors DTE_RG too |
-| [Log Analytics + App Insights MCP-backed Connectors](https://techcommunity.microsoft.com/blog/appsonazureblog/new-in-azure-sre-agent-log-analytics-and-application-insights-connectors/4509649) | Wire the `dteops-log` LAW + `dteops-appi` to `ogeagenticops` so it can correlate DTE app failures with Azure infrastructure events |
+| [Multi-Tenant Azure Resources with SRE Agent and Lighthouse](https://techcommunity.microsoft.com/blog/appsonazureblog/managing-multi%E2%80%91tenant-azure-resource-with-sre-agent-and-lighthouse/4511789) | Add an OGEDemos sub-tenant via Lighthouse so the agent monitors CWO_RG too |
+| [Log Analytics + App Insights MCP-backed Connectors](https://techcommunity.microsoft.com/blog/appsonazureblog/new-in-azure-sre-agent-log-analytics-and-application-insights-connectors/4509649) | Wire the `dteops-log` LAW + `dteops-appi` to `ogeagenticops` so it can correlate companion-app failures with Azure infrastructure events |
 | [Autonomous Alert Investigation + Intelligent Merging](https://techcommunity.microsoft.com/blog/appsonazureblog/azure-monitor-in-azure-sre-agent-autonomous-alert-investigation-and-intelligent-/4509069) | Configure an Azure Monitor alert on the storm scenario (CPU >80%); let the agent investigate end-to-end |
 | [3 Ways to Get More from Azure SRE Agent](https://techcommunity.microsoft.com/blog/appsonazureblog/3-ways-to-get-more-from-azure-sre-agent/4508993) | Token-based billing tips, "new thread per scheduled run" pattern, push/batch over polling |
 | [Customer Zero: How Microsoft Uses SRE Agent](https://techcommunity.microsoft.com/blog/appsonazureblog/how-we-build-and-use-azure-sre-agent-with-agentic-workflows/4508753) | Reference architecture for embedding agents across an SDLC |
 | [GA Announcement](https://aka.ms/sreagent/ga) | Confirms 1,300+ Microsoft-internal agents, 35K+ incidents mitigated, 20K+ eng hours saved |
 | [What's New in GA Release](https://aka.ms/sreagent/blog/whatsnewGA) | Code interpreter, memory, skills, subagents, Python tools, agent hooks, MCP connectors |
 | [Agent Investigating Itself (SRE4SRE)](https://aka.ms/sreagent/blogs/sre4sre) | Inspirational use case: the agent does its own incident response |
-| [Deep Context — Building Expertise](https://aka.ms/sreagent/blogs/deepcontextblog) | Background analysis that runs when nobody's asking — interesting for the DTE morning-briefing pattern |
-| [PagerDuty Incident Management](https://www.youtube.com/watch?v=5wrArcKzUaI) | If DTE wires PagerDuty, this is the integration pattern |
+| [Deep Context — Building Expertise](https://aka.ms/sreagent/blogs/deepcontextblog) | Background analysis that runs when nobody's asking — interesting for a utility morning-briefing pattern |
+| [PagerDuty Incident Management](https://www.youtube.com/watch?v=5wrArcKzUaI) | If you wire PagerDuty, this is the integration pattern |
 | [Agentic DevOps + GitHub Copilot Coding Agent](https://www.youtube.com/watch?v=ZrpxNkUQ0C8) | Demonstrates the SRE Agent handing off to GitHub Copilot for code fixes — complements our `code-analyzer` subagent |
 
 ## Key product capabilities (reference)
@@ -76,7 +76,7 @@ This is relevant for budgeting demos at scale — the showcase scenarios consume
 ## Patterns we're NOT yet using (next-iteration ideas)
 
 - **Response Plans** — automated routing from incident filter → subagent. Today the user has to invoke a subagent via `/agent` in chat. With response plans, an Azure Monitor alert on `ogedemo-storm-vmss` could automatically invoke `reliability-fixer` without human typing.
-- **MCP servers** — extend with Slack, Jira, Datadog, or a custom DTE MCP server that exposes SCADA/AMI telemetry.
-- **Scheduled tasks** — "daily morning briefing on OGEDemos_RG" matches the DTE Cloud Weather Ops pattern.
+- **MCP servers** — extend with Slack, Jira, Datadog, or a custom utility MCP server that exposes SCADA/AMI telemetry.
+- **Scheduled tasks** — "daily morning briefing on OGEDemos_RG" matches the Cloud Weather Ops pattern.
 - **Defender for Cloud integration** — pull security recommendations directly into `security-fixer`'s context.
 - **Lighthouse multi-tenant** — let one `ogeagenticops` instance manage both OGEDemos_RG and a customer-side RG.

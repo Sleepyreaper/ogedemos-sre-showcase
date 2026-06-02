@@ -23,7 +23,7 @@
 6. Click **Save**.
 
 7. (Optional) Wire connectivity:
-   - **DTE Cloud Weather Ops** investigations → the subagents will automatically pick up the `dteops-appi` + `dteops-log` connectors we registered on `ogeagenticops`.
+   - **Cloud Weather Ops** investigations → the subagents will automatically pick up the `dteops-appi` + `dteops-log` connectors we registered on `ogeagenticops`.
    - **Repository access** → `ogedemos-sre-showcase` is already registered as a CodeRepo; subagents can read/grep its files without further config.
 
 ## Verifying

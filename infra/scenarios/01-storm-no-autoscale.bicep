@@ -1,6 +1,6 @@
 // ─── Scenario 1: Storm / Reliability ─────────────────────────────
 // A VM Scale Set with NO autoscale rules — when "load" spikes,
-// it can't grow, and DTE customer-portal traffic during a storm
+// it can't grow, and a utility customer-portal under storm traffic
 // would degrade. SRE Agent should flag the absent autoscale policy.
 
 @description('Prefix for scenario resources.')
@@ -42,7 +42,7 @@ resource vmss 'Microsoft.Compute/virtualMachineScaleSets@2023-09-01' = {
     scenario: scenarioTag
     'support-owner': 'demo-team@ogedemos.com'
     'expected-finding': 'autoscale-missing'
-    'simulates': 'dte-customer-portal-tier'
+    'simulates': 'utility-customer-portal-tier'
   }
   sku: {
     name: 'Standard_B1s'

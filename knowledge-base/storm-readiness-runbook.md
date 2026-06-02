@@ -1,6 +1,6 @@
 # Runbook: Storm Readiness — Autoscale & Capacity
 
-> Loaded into SRE Agent memory. Use when finding scale-out gaps (no autoscale settings, fixed-capacity compute, undersized buffers) on customer-impacting resources. Specifically relevant to DTE-style "weather event = traffic spike" patterns.
+> Loaded into SRE Agent memory. Use when finding scale-out gaps (no autoscale settings, fixed-capacity compute, undersized buffers) on customer-impacting resources. Specifically relevant to utility-style "weather event = traffic spike" patterns.
 
 ## Symptoms
 
@@ -73,7 +73,7 @@ Add `Microsoft.Insights/autoscalesettings` with two rules:
 
 ### Pattern B — Scheduled scale for predictable events
 
-For storm forecasting (DTE-style), add a scheduled profile that pre-scales before the event (e.g., 8 instances Mon-Fri 4-9 PM ET).
+For storm forecasting (utility-style), add a scheduled profile that pre-scales before the event (e.g., 8 instances Mon-Fri 4-9 PM ET).
 
 ### Pattern C — Switch to Container Apps / Functions for burst-bursty workloads
 
@@ -81,7 +81,7 @@ If the customer-facing tier is genuinely bursty (5x+ in <15 min), VMSS scaling c
 
 ## What to file
 
-Use the incident-report-template. Required: Summary, Impact (which DTE-style scenario this maps to), Evidence (capacity + 14-day util + 30-day peak), Root Cause (`autoscale-missing` / `autoscale-disabled` / `quota-bound`), Remediation (Pattern A/B/C), Risk (cost + warm-up time + downstream saturation), Verification (synthetic load test).
+Use the incident-report-template. Required: Summary, Impact (which utility-style scenario this maps to), Evidence (capacity + 14-day util + 30-day peak), Root Cause (`autoscale-missing` / `autoscale-disabled` / `quota-bound`), Remediation (Pattern A/B/C), Risk (cost + warm-up time + downstream saturation), Verification (synthetic load test).
 
 ## Anti-patterns
 

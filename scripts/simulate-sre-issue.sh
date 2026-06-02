@@ -25,7 +25,7 @@ case "$SCENARIO" in
 **Severity:** Medium
 **Affected resource:** \`ogedemo-storm-vmss\` (Microsoft.Compute/virtualMachineScaleSets)
 **Resource group:** OGEDemos_RG
-**Finding:** VMSS has no autoscale settings configured. Tagged \`simulates=dte-customer-portal-tier\`, meaning under a storm event the customer portal cannot grow with load.
+**Finding:** VMSS has no autoscale settings configured. Tagged \`simulates=utility-customer-portal-tier\`, meaning under a storm event the customer portal cannot grow with load.
 
 ARG-QUERY: Resources | where type =~ 'Microsoft.Compute/virtualMachineScaleSets' and name == 'ogedemo-storm-vmss' | project name, sku, capacity=sku.capacity, location, tags
 "

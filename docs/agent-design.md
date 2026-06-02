@@ -10,7 +10,7 @@ A single Foundry-hosted agent that reads GitHub issues filed by Azure SRE Agent 
 
 ## Why a single agent, not a council?
 
-The DTE Cloud Weather Ops uses a 6-agent debate council because that's the value of *interactive* operational reasoning — humans benefit from watching cost vs reliability argue.
+The Cloud Weather Ops uses a 6-agent debate council because that's the value of *interactive* operational reasoning — humans benefit from watching cost vs reliability argue.
 
 This triage agent has a *narrower, structured job*: take an incident, produce a fix proposal. Structure beats debate here, so:
 
@@ -18,7 +18,7 @@ This triage agent has a *narrower, structured job*: take an incident, produce a 
 - **One strict JSON output schema** — workflow can parse without LLM-style ambiguity
 - **No conversational state** — every issue is a fresh call
 
-If a future demo wants debate (e.g., cost reviewer vs security reviewer arguing about an autoscale fix), wire the DTE council in by calling its `/api/ask` endpoint from the workflow instead.
+If a future demo wants debate (e.g., cost reviewer vs security reviewer arguing about an autoscale fix), wire the council in by calling its `/api/ask` endpoint from the workflow instead.
 
 ## Architecture
 
@@ -77,7 +77,7 @@ The federated MI needs:
 
 ## Telemetry / evaluation
 
-If `APPLICATIONINSIGHTS_CONNECTION_STRING` is set, the agent inherits OpenTelemetry tracing via the same `azure-monitor-opentelemetry` distro the DTE app uses. Every `chat.completions.create` is captured with prompt + completion length, latency, and any exceptions.
+If `APPLICATIONINSIGHTS_CONNECTION_STRING` is set, the agent inherits OpenTelemetry tracing via the same `azure-monitor-opentelemetry` distro the companion app uses. Every `chat.completions.create` is captured with prompt + completion length, latency, and any exceptions.
 
 For continuous evaluation, the recommended pattern is to:
 1. Maintain a dataset of "ground truth" (issue → expected fix) in `agents/triage/eval/`
