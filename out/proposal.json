@@ -1,0 +1,16 @@
+{
+  "summary": "The NSG \u201cogedemo-security-nsg\u201d currently permits inbound SSH (port 22) and RDP (port 3389) from any IP address, exposing management ports to the internet. We recommend restricting these rules to a known management IP CIDR block.",
+  "root_cause": "Inbound security rules \u201cAllow-SSH\u201d and \u201cAllow-RDP\u201d have sourceAddressPrefix set to \u2018*\u2019, allowing 0.0.0.0/0 access to ports 22 and 3389.",
+  "fix": {
+    "kind": "bicep",
+    "filename": "infra/network/ogedemo-security-nsg.bicep",
+    "patch": "@description('CIDR range for management workstation subnets')\nparam managementIpCidr string = '203.0.113.0/24'  // TODO: replace with your approved range\n\nresource nsg 'Microsoft.Network/networkSecurityGroups@2021-08-01' existing = {\n  name: 'ogedemo-security-nsg'\n}\n\n// Update SSH rule to restrict source\nresource sshRule 'Microsoft.Network/networkSecurityGroups/securityRules@2021-08-01' = {\n  parent: nsg\n  name: 'Allow-SSH'\n  properties: {\n    priority: 1001\n    direction: 'Inbound'\n    access: 'Allow'\n    protocol: 'Tcp'\n    sourcePortRange: '*'\n    destinationPortRange: '22'\n    sourceAddressPrefix: managementIpCidr\n    destinationAddressPrefix: '*'\n    description: 'Restrict SSH access to management IP range'\n  }\n}\n\n// Update RDP rule to restrict source\nresource rdpRule 'Microsoft.Network/networkSecurityGroups/securityRules@2021-08-01' = {\n  parent: nsg\n  name: 'Allow-RDP'\n  properties: {\n    priority: 1002\n    direction: 'Inbound'\n    access: 'Allow'\n    protocol: 'Tcp'\n    sourcePortRange: '*'\n    destinationPortRange: '3389'\n    sourceAddressPrefix: managementIpCidr\n    destinationAddressPrefix: '*'\n    description: 'Restrict RDP access to management IP range'\n  }\n}"
+  },
+  "risk": "If the managementIpCidr parameter is misconfigured or too narrow, administrators may lock themselves out of SSH/RDP; static IP changes require updating this parameter.",
+  "verification": "Run `az network nsg rule list -g OGEDemos_RG --nsg-name ogedemo-security-nsg` and confirm that the sourceAddressPrefix for rules Allow-SSH and Allow-RDP matches the approved CIDR. Attempt SSH/RDP from an allowed IP and verify denied from an external IP.",
+  "human_review_focus": [
+    "Validate the managementIpCidr parameter is correct",
+    "Ensure rule names and priorities match existing policies",
+    "Check for overlapping or higher-priority NSG rules that could re-open ports"
+  ]
+}
